@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  library_manga:
+    path: ../library
 
   dio: ^5.5.0
   get_it: ^7.7.0

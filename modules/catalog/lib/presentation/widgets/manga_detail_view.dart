@@ -1,11 +1,18 @@
 // lib/presentation/widgets/manga_detail_view.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:get_it/get_it.dart';
 
+// BLoC + domain
 import '../bloc/manga_detail_bloc.dart';
 import '../../domain/entities/manga.dart';
 import '../../domain/entities/chapter.dart';
 import 'chapter_tile.dart';
+
+// dùng để “Đọc tiếp”
+import 'package:library_manga/application/usecases/get_continue_reading.dart';
+import 'package:library_manga/domain/entities/reading_progress.dart';
+
 
 class MangaDetailView extends StatefulWidget {
   final String mangaId;
@@ -46,6 +53,76 @@ class _MangaDetailViewState extends State<MangaDetailView> {
     _scrollController.dispose();
     super.dispose();
   }
+
+  // ===== Helpers cho điều hướng =====
+
+  void _openChapter(String chapterId, {int pageIndex = 0}) {
+    if (widget.onOpenChapter != null) {
+      widget.onOpenChapter!(chapterId);
+    } else {
+      // Không có callback thì thôi, nhưng từ bi nhắc nhẹ.
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không thể mở chương (thiếu onOpenChapter).')),
+      );
+    }
+  }
+
+  // Lấy chương “đầu” theo sort hiện tại
+  Chapter? _pickStartChapter(MangaDetailState st) {
+    if (st.chapters.isEmpty) return null;
+    // ascending == true => chương nhỏ nhất nằm ở đầu danh sách
+    return st.ascending ? st.chapters.first : st.chapters.last;
+  }
+
+  // Lấy progress mới nhất theo mangaId
+  Future<ReadingProgress?> _getLatestProgressForManga(String mangaId) async {
+    try {
+      final get = GetIt.instance<GetContinueReading>();
+      final list = await get();
+      final filtered = list.where((p) => p.mangaId == mangaId).toList();
+      if (filtered.isEmpty) return null;
+      filtered.sort((a, b) => b.savedAt.compareTo(a.savedAt));
+      return filtered.first;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _handleReadFromStart() async {
+    final st = context.read<MangaDetailBloc>().state;
+    final first = _pickStartChapter(st);
+    if (first == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không có danh sách chương để đọc.')),
+      );
+      return;
+    }
+    _openChapter(first.id.value, pageIndex: 0);
+  }
+
+  Future<void> _handleReadContinue() async {
+    final st = context.read<MangaDetailBloc>().state;
+
+    // 1) thử lấy progress mới nhất
+    final latest = await _getLatestProgressForManga(widget.mangaId);
+    if (latest != null) {
+      _openChapter(latest.chapterId, pageIndex: latest.pageIndex);
+      return;
+    }
+
+    // 2) fallback: đọc từ đầu
+    final first = _pickStartChapter(st);
+    if (first != null) {
+      _openChapter(first.id.value, pageIndex: 0);
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Không có chương để đọc.')),
+    );
+  }
+
+  // ===== UI =====
 
   Widget _buildHeader(Manga manga) {
     final th = Theme.of(context);
@@ -150,12 +227,10 @@ class _MangaDetailViewState extends State<MangaDetailView> {
             child: Row(
               children: [
                 FilledButton(
-                  onPressed: () {
-                    // TODO: tìm chapter đầu tiên
-                  },
+                  onPressed: _handleReadFromStart,
                   style: FilledButton.styleFrom(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 10),
                     backgroundColor: const Color(0xFF4B3EFF),
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
@@ -168,12 +243,10 @@ class _MangaDetailViewState extends State<MangaDetailView> {
                 const SizedBox(width: 8),
 
                 FilledButton.tonal(
-                  onPressed: () {
-                    // TODO: đọc tiếp từ progress gần nhất
-                  },
+                  onPressed: _handleReadContinue,
                   style: FilledButton.styleFrom(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 10),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -278,9 +351,7 @@ class _MangaDetailViewState extends State<MangaDetailView> {
             return ChapterTile(
               chapter: c,
               onTap: () {
-                if (widget.onOpenChapter != null) {
-                  widget.onOpenChapter!(c.id.value);
-                }
+                _openChapter(c.id.value, pageIndex: 0);
               },
             );
           }),
