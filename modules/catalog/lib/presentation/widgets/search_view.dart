@@ -38,19 +38,25 @@ class _SearchViewState extends State<SearchView> {
     'Sci-Fi',
   ];
 
-  @override
-  void initState() {
-    super.initState();
+@override
+void initState() {
+  super.initState();
 
-    // infinite scroll
-    _scrollController.addListener(() {
-      final bloc = context.read<SearchBloc>();
-      if (_scrollController.position.pixels >
-          _scrollController.position.maxScrollExtent - 200) {
-        bloc.add(const SearchLoadMore());
-      }
-    });
-  }
+  // Gửi event ban đầu để hiện "All" ngay khi mở trang
+  Future.microtask(() {
+    context.read<SearchBloc>().add(const SearchStarted(query: '', genre: null));
+  });
+
+  // infinite scroll
+  _scrollController.addListener(() {
+    final bloc = context.read<SearchBloc>();
+    if (_scrollController.position.pixels >
+        _scrollController.position.maxScrollExtent - 200) {
+      bloc.add(const SearchLoadMore());
+    }
+  });
+}
+
 
   @override
   void dispose() {
@@ -245,42 +251,36 @@ class _SearchViewState extends State<SearchView> {
   }
 
   Widget _buildBodyByState(
-    SearchState state, {
-    required ScrollController scrollController,
-  }) {
-    // trạng thái ban đầu
-    final noCriteria =
-        state.query.isEmpty && (state.genre == null || state.genre!.isEmpty);
-
-    if (state.status == SearchStatus.initial || noCriteria) {
-      return const _EmptyHint(
-        text: "Nhập tên truyện hoặc chọn thể loại để tìm.",
-      );
-    }
-
-    // đang load lần đầu
-    if (state.status == SearchStatus.loading && state.items.isEmpty) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
-    }
-
-    // lỗi khi chưa có data
-    if (state.status == SearchStatus.failure && state.items.isEmpty) {
-      return _EmptyHint(
-        text:
-            "Không tìm thấy hoặc lỗi mạng.\n${state.errorMessage ?? ''}",
-      );
-    }
-
-    // có data rồi (kể cả đang loadMore)
-    return _ResultGrid(
-      scrollController: scrollController,
-      items: state.items,
-      loadingMore: state.status == SearchStatus.loadingMore,
-      onTapManga: widget.onTapManga,
-    );
+  SearchState state, {
+  required ScrollController scrollController,
+}) {
+  // HIỆN HINT chỉ khi còn trạng thái initial
+  if (state.status == SearchStatus.initial) {
+    return const _EmptyHint(text: "Nhập tên truyện hoặc chọn thể loại để tìm.");
   }
+
+  if (state.status == SearchStatus.loading && state.items.isEmpty) {
+    return const Center(child: CircularProgressIndicator());
+  }
+
+  if (state.status == SearchStatus.failure && state.items.isEmpty) {
+    return _EmptyHint(text: "Không tìm thấy hoặc lỗi mạng.\n${state.errorMessage ?? ''}");
+  }
+
+  // Success: có hoặc chưa có item
+  if (state.status == SearchStatus.success && state.items.isEmpty) {
+    // Cho phép All rỗng vẫn ra "Không có kết quả"
+    return const _EmptyHint(text: "Không có kết quả");
+  }
+
+  return _ResultGrid(
+    scrollController: scrollController,
+    items: state.items,
+    loadingMore: state.status == SearchStatus.loadingMore,
+    onTapManga: widget.onTapManga,
+  );
+}
+
 }
 
 class _StatusBadgeMini extends StatelessWidget {

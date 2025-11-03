@@ -39,12 +39,48 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     final q = event.query.trim();
     final g = event.genre?.trim();
 
-    // nếu cả query rỗng và genre rỗng => quay về initial
-    final bool isEmptySearch = (q.isEmpty && (g == null || g.isEmpty));
-    if (isEmptySearch) {
-      emit(const SearchState.initial());
-      return;
-    }
+final bool isEmptySearch = (q.isEmpty && (g == null || g.isEmpty));
+
+// Luôn fetch, kể cả khi rỗng để có "All" mặc định
+emit(SearchState(
+  status: SearchStatus.loading,
+  query: q,
+  genre: (g != null && g.isNotEmpty) ? g : null,
+  items: const [],
+  hasMore: true,
+  offset: 0,
+  errorMessage: null,
+));
+
+try {
+  final list = await _searchManga(
+    query: q,                         // rỗng cũng OK
+    genre: (g != null && g.isNotEmpty) ? g : null, // null = All
+    offset: 0,
+    limit: pageSize,
+  );
+
+  emit(SearchState(
+    status: SearchStatus.success,
+    query: q,
+    genre: (g != null && g.isNotEmpty) ? g : null,
+    items: list,
+    hasMore: list.length == pageSize,
+    offset: list.length,
+    errorMessage: null,
+  ));
+} catch (e) {
+  emit(SearchState(
+    status: SearchStatus.failure,
+    query: q,
+    genre: (g != null && g.isNotEmpty) ? g : null,
+    items: const [],
+    hasMore: false,
+    offset: 0,
+    errorMessage: e.toString(),
+  ));
+}
+
 
     // set state -> loading cho trang đầu
     emit(SearchState(
