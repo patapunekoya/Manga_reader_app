@@ -10,18 +10,12 @@ import '../page/manga_detail_shell_page.dart';
 import '../page/reader_shell_page.dart';
 
 /// AppRouter
-/// Điều hướng tất cả màn chính:
+/// Điều hướng các màn chính:
 /// - /home      -> HomeShellPage (trong MainShell + bottom nav)
 /// - /search    -> SearchShellPage (trong MainShell + bottom nav)
 /// - /library   -> LibraryShellPage (trong MainShell + bottom nav)
-///
-/// - /manga/:mangaId
-///     -> MangaDetailShellPage (KHÔNG bottom nav)
-///
-/// - /reader/:chapterId
-///     -> ReaderShellPage (KHÔNG bottom nav, full-screen)
-///
-/// initialLocation = '/home' để mở app vào tab Home.
+/// - /manga/:mangaId        -> MangaDetailShellPage (KHÔNG bottom nav; nhận ?from=home|search|library)
+/// - /reader/:chapterId     -> ReaderShellPage (KHÔNG bottom nav, full-screen)
 class AppRouter {
   AppRouter();
 
@@ -62,36 +56,38 @@ class AppRouter {
       ),
 
       // ================== MANGA DETAIL ==================
-      // Không có bottom nav
+      // Đọc ?from=home|search|library NGAY tại router và truyền xuống,
+      // tránh gọi InheritedWidget trong initState bên trong page.
       GoRoute(
         path: '/manga/:mangaId',
         builder: (context, state) {
           final mangaId = state.pathParameters['mangaId'] ?? '';
+          final origin = (state.uri.queryParameters['from'] ?? 'home').toLowerCase();
           return MangaDetailShellPage(
             mangaId: mangaId,
+            origin: origin, // <— truyền để Back biết quay tab nào
           );
         },
       ),
 
       // ================== READER ==================
-      // Không có bottom nav, full-screen đọc chương
-      //
       // YÊU CẦU ĐẦY ĐỦ:
       // - path param: chapterId  (chương đang mở)
       // - query param:
       //      mangaId=xxx
-      //      page=12 (page index resume, int)
+      //      page=12 (page index resume)
+      //      mangaTitle=...
+      //      coverImageUrl=...
       // - extra (Map<String,dynamic>):
       //      {
-      //        "chapters": <List<String>>  // danh sách tất cả chapterId theo thứ tự đọc
-      //        "currentIndex": <int>       // vị trí của chapterId hiện tại trong list trên
+      //        "chapters": <List<String>>,      // danh sách chapterId theo thứ tự đọc
+      //        "currentIndex": <int>,           // vị trí hiện tại
+      //        "chapterNumbers": <List<String>> // số chương song song với chapters
       //      }
-      //
-      // Nếu thiếu extra => fallback an toàn: chỉ có 1 chương, không next/prev.
       GoRoute(
         path: '/reader/:chapterId',
         builder: (context, state) {
-          // lấy mangaId để quay lại detail
+          // Lấy id manga để quay lại detail
           final mangaId = state.uri.queryParameters['mangaId'] ?? '';
 
           // page resume
@@ -99,34 +95,44 @@ class AppRouter {
           final initialPageIndex = int.tryParse(pageIndexStr) ?? 0;
 
           // chapterId hiện tại (lấy từ path)
-          final currentChapterId =
-              state.pathParameters['chapterId'] ?? '';
+          final currentChapterId = state.pathParameters['chapterId'] ?? '';
 
-          // đọc extra
-          final extra = state.extra as Map<String, dynamic>?;
+          // Đọc extra an toàn
+          final extra = state.extra is Map<String, dynamic>
+              ? state.extra as Map<String, dynamic>
+              : null;
 
-          // nếu MangaDetailShellPage có truyền extra thì dùng,
-          // còn không thì fallback 1-element list để tránh crash
+          // Danh sách chapterId (fallback 1 phần tử để tránh crash)
           final List<String> chapters =
-              (extra?['chapters'] as List<String>?) ??
-              <String>[currentChapterId];
+              (extra?['chapters'] is List)
+                  ? List<String>.from(extra!['chapters'] as List)
+                  : <String>[currentChapterId];
 
-          // index của currentChapterId trong list chapters
-          // - ưu tiên lấy thẳng từ extra['currentIndex'] nếu có
-          // - nếu không có thì tự tính từ chapters
+          // Danh sách số chương tương ứng (song song với chapters)
+          final List<String>? chapterNumbers =
+              (extra?['chapterNumbers'] is List)
+                  ? (extra!['chapterNumbers'] as List).map((e) => e.toString()).toList()
+                  : null;
+
+          // Metadata manga (để lưu progress/hiển thị)
+          final String mangaTitle = state.uri.queryParameters['mangaTitle'] ?? '';
+          final String? coverImageUrl = state.uri.queryParameters['coverImageUrl'];
+
+          // Index hiện tại
           int currentIndex =
-              extra?['currentIndex'] as int? ??
-              chapters.indexOf(currentChapterId);
-
-          if (currentIndex < 0) {
-            currentIndex = 0;
-          }
+              (extra?['currentIndex'] is int)
+                  ? extra!['currentIndex'] as int
+                  : chapters.indexOf(currentChapterId);
+          if (currentIndex < 0) currentIndex = 0;
 
           return ReaderShellPage(
             mangaId: mangaId,
             chapters: chapters,
             currentIndex: currentIndex,
             initialPageIndex: initialPageIndex,
+            mangaTitle: mangaTitle,
+            coverImageUrl: coverImageUrl,
+            chapterNumbers: chapterNumbers,
           );
         },
       ),

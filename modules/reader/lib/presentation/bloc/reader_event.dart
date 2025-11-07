@@ -1,4 +1,4 @@
-// lib/presentation/bloc/reader_event.dart
+// modules/reader/lib/presentation/bloc/reader_event.dart
 part of 'reader_bloc.dart';
 
 @immutable
@@ -8,12 +8,36 @@ abstract class ReaderEvent extends Equatable {
   List<Object?> get props => [];
 }
 
+/// Load một chapter kèm metadata để có thể lưu/khôi phục progress.
+/// [initialPageIndex] cho phép nhảy thẳng tới trang đã lưu (mặc định 0).
 class ReaderLoadChapter extends ReaderEvent {
   final String chapterId;
-  const ReaderLoadChapter(this.chapterId);
+
+  final String? mangaId;
+  final String? mangaTitle;
+  final String? coverImageUrl;
+  final String? chapterNumber;
+
+  final int initialPageIndex;
+
+  const ReaderLoadChapter(
+    this.chapterId, {
+    this.mangaId,
+    this.mangaTitle,
+    this.coverImageUrl,
+    this.chapterNumber,
+    this.initialPageIndex = 0,
+  });
 
   @override
-  List<Object?> get props => [chapterId];
+  List<Object?> get props => [
+        chapterId,
+        mangaId,
+        mangaTitle,
+        coverImageUrl,
+        chapterNumber,
+        initialPageIndex,
+      ];
 }
 
 class ReaderSetCurrentPage extends ReaderEvent {

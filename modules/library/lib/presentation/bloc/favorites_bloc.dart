@@ -1,11 +1,12 @@
-// lib/presentation/bloc/favorites_bloc.dart
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
-import 'package:meta/meta.dart';
 
+// Domain
+import '../../domain/entities/favorite_item.dart';
+
+// Usecases
 import '../../application/usecases/get_favorites.dart';
 import '../../application/usecases/toggle_favorite.dart';
-import '../../domain/entities/favorite_item.dart';
 
 part 'favorites_event.dart';
 part 'favorites_state.dart';
@@ -21,6 +22,7 @@ class FavoritesBloc extends Bloc<FavoritesEvent, FavoritesState> {
         _toggleFavorite = toggleFavorite,
         super(const FavoritesState.initial()) {
     on<FavoritesLoadRequested>(_onLoadRequested);
+    on<FavoritesRefreshRequested>(_onRefreshRequested);
     on<FavoritesToggleRequested>(_onToggleRequested);
   }
 
@@ -28,14 +30,10 @@ class FavoritesBloc extends Bloc<FavoritesEvent, FavoritesState> {
     FavoritesLoadRequested event,
     Emitter<FavoritesState> emit,
   ) async {
-    emit(state.copyWith(status: FavoritesStatus.loading));
-
+    emit(state.copyWith(status: FavoritesStatus.loading, errorMessage: null));
     try {
       final list = await _getFavorites();
-      emit(state.copyWith(
-        status: FavoritesStatus.success,
-        favorites: list,
-      ));
+      emit(state.copyWith(status: FavoritesStatus.success, items: list));
     } catch (e) {
       emit(state.copyWith(
         status: FavoritesStatus.failure,
@@ -44,22 +42,48 @@ class FavoritesBloc extends Bloc<FavoritesEvent, FavoritesState> {
     }
   }
 
+  Future<void> _onRefreshRequested(
+    FavoritesRefreshRequested event,
+    Emitter<FavoritesState> emit,
+  ) async {
+    try {
+      final list = await _getFavorites();
+      emit(state.copyWith(status: FavoritesStatus.success, items: list));
+    } catch (e) {
+      // không hạ trạng thái về failure để UI không giật
+      emit(state.copyWith(errorMessage: e.toString()));
+    }
+  }
+
   Future<void> _onToggleRequested(
     FavoritesToggleRequested event,
     Emitter<FavoritesState> emit,
   ) async {
-    // user bấm tim ♥ trong UI -> toggle -> sau đó reload list
-    await _toggleFavorite(
-      mangaId: event.mangaId,
-      title: event.title,
-      coverImageUrl: event.coverImageUrl,
-    );
+    // Optimistic: nếu đang có trong danh sách thì remove tạm thời cho mượt
+    final cur = List<FavoriteItem>.from(state.items);
+    final idx = cur.indexWhere((x) => x.id.value == event.mangaId);
+    if (idx >= 0) {
+      cur.removeAt(idx);
+      emit(state.copyWith(items: cur));
+    }
 
-    // reload
-    final list = await _getFavorites();
-    emit(state.copyWith(
-      status: FavoritesStatus.success,
-      favorites: list,
-    ));
+    try {
+      await _toggleFavorite(
+        mangaId: event.mangaId,
+        title: event.title,
+        coverImageUrl: event.coverImageUrl,
+      );
+      // Đồng bộ lại từ nguồn thật
+      final latest = await _getFavorites();
+      emit(state.copyWith(status: FavoritesStatus.success, items: latest));
+    } catch (e) {
+      // Nếu fail thì reload để khớp với storage
+      final latest = await _getFavorites();
+      emit(state.copyWith(
+        status: FavoritesStatus.success,
+        items: latest,
+        errorMessage: e.toString(),
+      ));
+    }
   }
 }

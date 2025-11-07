@@ -3,7 +3,7 @@ import '../../domain/entities/manga.dart';
 import '../../domain/value_objects/manga_id.dart';
 
 /// MangaDto: trung gian giữa JSON của MangaDex và Manga entity.
-/// Chứa logic parse JSON khá dơ, nên để ở tầng infra.
+/// Chứa logic parse JSON và relationships.
 
 class MangaDto {
   final String id;
@@ -14,6 +14,11 @@ class MangaDto {
   final String? coverImageUrl;
   final String? authorName;
   final int? year;
+
+  /// Thời điểm cập nhật gần nhất (nếu MangaDex trả về)
+  final DateTime? updatedAt;
+
+  /// Điểm rating (nếu sau này lấy từ statistics)
   final double? rating;
 
   MangaDto({
@@ -25,6 +30,7 @@ class MangaDto {
     required this.coverImageUrl,
     required this.authorName,
     required this.year,
+    required this.updatedAt,
     required this.rating,
   });
 
@@ -32,48 +38,35 @@ class MangaDto {
   factory MangaDto.fromMangaDexJson(Map<String, dynamic> json) {
     final mangaId = json['id']?.toString() ?? '';
 
-    final attrs =
-        (json['attributes'] as Map<String, dynamic>? ?? {});
-    final rels = (json['relationships'] as List<dynamic>? ?? [])
-        .cast<Map<String, dynamic>>();
+    final attrs = (json['attributes'] as Map<String, dynamic>? ?? {});
+    final rels =
+        (json['relationships'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
 
-    // title
+    // -------- title ----------
     String pickTitle(Map<String, dynamic> titleMap) {
-      // ưu tiên en
-      if (titleMap['en'] is String &&
-          (titleMap['en'] as String).isNotEmpty) {
-        return titleMap['en'] as String;
-      }
-      if (titleMap.isNotEmpty) {
-        return titleMap.values.first.toString();
-      }
+      final en = titleMap['en'];
+      if (en is String && en.isNotEmpty) return en;
+      if (titleMap.isNotEmpty) return titleMap.values.first.toString();
       return 'Unknown Title';
     }
 
-    final title = pickTitle(
-      (attrs['title'] as Map<String, dynamic>? ?? {}),
-    );
+    final title = pickTitle((attrs['title'] as Map<String, dynamic>? ?? {}));
 
-    // description (take 'en' or first)
+    // -------- description ----------
     String? pickDesc(Map<String, dynamic> descMap) {
-      if (descMap['en'] is String &&
-          (descMap['en'] as String).isNotEmpty) {
-        return descMap['en'] as String;
-      }
-      if (descMap.isNotEmpty) {
-        return descMap.values.first.toString();
-      }
+      final en = descMap['en'];
+      if (en is String && en.isNotEmpty) return en;
+      if (descMap.isNotEmpty) return descMap.values.first.toString();
       return null;
     }
 
-    final description = pickDesc(
-      (attrs['description'] as Map<String, dynamic>? ?? {}),
-    );
+    final description =
+        pickDesc((attrs['description'] as Map<String, dynamic>? ?? {}));
 
-    // status
+    // -------- status ----------
     final status = attrs['status']?.toString() ?? 'unknown';
 
-    // publication year if exists
+    // -------- year ----------
     int? year;
     if (attrs['year'] != null) {
       final y = attrs['year'];
@@ -84,16 +77,27 @@ class MangaDto {
       }
     }
 
-    // rating / score (MangaDex có bayesianRating trong statistics,
-    // nhưng có thể không luôn có sẵn ở đây. Tạm null.)
+    // -------- updatedAt ----------
+    DateTime? updatedAt;
+    final updatedAtRaw = attrs['updatedAt'];
+    if (updatedAtRaw is String && updatedAtRaw.isNotEmpty) {
+      try {
+        updatedAt = DateTime.parse(updatedAtRaw);
+      } catch (_) {
+        updatedAt = null;
+      }
+    }
+
+    // -------- rating ----------
+    // MangaDex statistics (bayesianRating) thường ở endpoint khác.
+    // Ở đây để null; nếu sau này có dto/statistics riêng thì gán vào.
     double? rating;
 
-    // authorName from relationships[type=='author']
+    // -------- authorName từ relationships ----------
     String? authorName;
     for (final rel in rels) {
       if (rel['type'] == 'author') {
-        final aAttr =
-            (rel['attributes'] as Map<String, dynamic>? ?? {});
+        final aAttr = (rel['attributes'] as Map<String, dynamic>? ?? {});
         final name = aAttr['name']?.toString();
         if (name != null && name.isNotEmpty) {
           authorName = name;
@@ -102,37 +106,29 @@ class MangaDto {
       }
     }
 
-    // cover url build từ relationships[type=='cover_art']
+    // -------- cover url từ relationships ----------
     String? coverImageUrl;
     for (final rel in rels) {
       if (rel['type'] == 'cover_art') {
-        final coverAttrs =
-            (rel['attributes'] as Map<String, dynamic>? ?? {});
+        final coverAttrs = (rel['attributes'] as Map<String, dynamic>? ?? {});
         final fileName = coverAttrs['fileName']?.toString();
         if (fileName != null && fileName.isNotEmpty) {
+          // có thể đổi 256 -> 512 nếu cần
           coverImageUrl =
               'https://uploads.mangadex.org/covers/$mangaId/$fileName.256.jpg';
         }
       }
     }
 
-    // tags
+    // -------- tags ----------
     final tagsList = (attrs['tags'] as List<dynamic>? ?? [])
         .cast<Map<String, dynamic>>()
         .map((tagJson) {
-      final tAttr = (tagJson['attributes']
-          as Map<String, dynamic>? ??
-          {});
-      final nameMap = (tAttr['name']
-          as Map<String, dynamic>? ??
-          {});
-      if (nameMap['en'] is String &&
-          (nameMap['en'] as String).isNotEmpty) {
-        return nameMap['en'] as String;
-      }
-      if (nameMap.isNotEmpty) {
-        return nameMap.values.first.toString();
-      }
+      final tAttr = (tagJson['attributes'] as Map<String, dynamic>? ?? {});
+      final nameMap = (tAttr['name'] as Map<String, dynamic>? ?? {});
+      final en = nameMap['en'];
+      if (en is String && en.isNotEmpty) return en;
+      if (nameMap.isNotEmpty) return nameMap.values.first.toString();
       return 'Unknown';
     }).toList();
 
@@ -145,6 +141,7 @@ class MangaDto {
       coverImageUrl: coverImageUrl,
       authorName: authorName,
       year: year,
+      updatedAt: updatedAt,
       rating: rating,
     );
   }
@@ -159,6 +156,7 @@ class MangaDto {
       coverImageUrl: coverImageUrl,
       authorName: authorName,
       year: year,
+      updatedAt: updatedAt,
       rating: rating,
       isFavorite: isFavorite,
     );

@@ -1,67 +1,44 @@
-// lib/infrastructure/datasources/library_local_ds.dart
+// modules/library/lib/infrastructure/datasources/library_local_ds.dart
 import 'package:hive_flutter/hive_flutter.dart';
 
-/// LibraryLocalDataSource:
-/// Chịu trách nhiệm đọc/ghi Hive.
-/// - favorites_box: lưu manga yêu thích
-/// - progress_box: lưu tiến trình đọc
-///
-/// Cấu trúc favorites_box[mangaId]:
-/// {
-///   "mangaId": "...",
-///   "title": "...",
-///   "coverImageUrl": "...",
-///   "addedAt": epochMs,
-///   "updatedAt": epochMs
-/// }
-///
-/// Cấu trúc progress_box[chapterId]:
-/// {
-///   "chapterId": "...",
-///   "mangaId": "...",
-///   "mangaTitle": "...",
-///   "coverImageUrl": "...",
-///   "chapterNumber": "...",
-///   "pageIndex": 12,
-///   "savedAt": epochMs
-/// }
-
+/// Box:
+/// - favorites_box[mangaId] -> {...}
+/// - progress_box[mangaId]  -> {
+///     "mangaId": "...",
+///     "mangaTitle": "...",
+///     "coverImageUrl": "...",
+///     "lastChapterId": "...",
+///     "lastChapterNumber": "...",
+///     "savedAt": epochMs
+///   }
 class LibraryLocalDataSource {
   static const favoritesBoxName = 'favorites_box';
-  static const progressBoxName = 'progress_box';
+  static const progressBoxName  = 'progress_box';
 
   late Box _favoritesBox;
   late Box _progressBox;
-
   bool _initialized = false;
 
   Future<void> init() async {
-    // mở Hive box nếu chưa mở
     _favoritesBox = await Hive.openBox(favoritesBoxName);
-    _progressBox = await Hive.openBox(progressBoxName);
-    _initialized = true;
+    _progressBox  = await Hive.openBox(progressBoxName);
+    _initialized  = true;
   }
 
   void _ensureReady() {
     if (!_initialized) {
-      // tại sao cần cái này?
-      // vì nếu ai quên gọi init() trong bootstrap thì chúng ta báo lỗi rõ ràng,
-      // thay vì nổ LateInitializationError lung tung ở runtime.
       throw StateError(
-        'LibraryLocalDataSource was used before init(). '
-        'Hãy gọi await sl<LibraryLocalDataSource>().init() trong bootstrap() trước khi dùng.',
+        'LibraryLocalDataSource used before init(). '
+        'Call await sl<LibraryLocalDataSource>().init() in bootstrap().',
       );
     }
   }
 
-  // FAVORITES --------------------------------
-
+  // ===== FAVORITES =====
   Map<String, dynamic>? getFavoriteRaw(String mangaId) {
     _ensureReady();
     final raw = _favoritesBox.get(mangaId);
-    if (raw is Map) {
-      return Map<String, dynamic>.from(raw);
-    }
+    if (raw is Map) return Map<String, dynamic>.from(raw);
     return null;
   }
 
@@ -83,11 +60,17 @@ class LibraryLocalDataSource {
         .toList();
   }
 
-  // PROGRESS ---------------------------------
-
-  Future<void> putProgressRaw(String chapterId, Map<String, dynamic> data) async {
+  // ===== PROGRESS (key = mangaId) =====
+  Future<void> putProgressByMangaId(String mangaId, Map<String, dynamic> data) async {
     _ensureReady();
-    await _progressBox.put(chapterId, data);
+    await _progressBox.put(mangaId, data);
+  }
+
+  Map<String, dynamic>? getProgressByMangaId(String mangaId) {
+    _ensureReady();
+    final raw = _progressBox.get(mangaId);
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return null;
   }
 
   List<Map<String, dynamic>> getAllProgressRaw() {

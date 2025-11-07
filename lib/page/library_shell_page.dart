@@ -8,11 +8,9 @@ import '../theme/colors.dart';
 
 // Bloc từ module library_manga
 import 'package:library_manga/presentation/bloc/favorites_bloc.dart';
-
 import 'package:library_manga/presentation/bloc/history_bloc.dart';
 
-
-// Widgets từ module library_manga
+// Widgets
 import 'package:library_manga/presentation/widgets/favorite_grid.dart';
 import 'package:library_manga/presentation/widgets/history_list.dart';
 
@@ -32,11 +30,8 @@ class _LibraryShellPageState extends State<LibraryShellPage> {
     super.initState();
     final sl = GetIt.instance;
 
-    _favoritesBloc = sl<FavoritesBloc>()
-      ..add(const FavoritesLoadRequested());
-
-    _historyBloc = sl<HistoryBloc>()
-      ..add(const HistoryLoadRequested());
+    _favoritesBloc = sl<FavoritesBloc>()..add(const FavoritesLoadRequested());
+    _historyBloc = sl<HistoryBloc>()..add(const HistoryLoadRequested());
   }
 
   @override
@@ -51,9 +46,7 @@ class _LibraryShellPageState extends State<LibraryShellPage> {
     required String chapterId,
     required int pageIndex,
   }) {
-    context.push(
-      "/reader/$chapterId?mangaId=$mangaId&page=$pageIndex",
-    );
+    context.push("/reader/$chapterId?mangaId=$mangaId&page=$pageIndex");
   }
 
   void _openMangaDetail(String mangaId) {
@@ -66,56 +59,103 @@ class _LibraryShellPageState extends State<LibraryShellPage> {
       backgroundColor: AppColors.background,
       body: SafeArea(
         bottom: false,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                "Yêu thích",
-                style: TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
+        child: CustomScrollView(
+          slivers: [
+            // ====== HEADER: YÊU THÍCH ======
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        "Yêu thích",
+                        style: TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Làm mới',
+                      onPressed: () =>
+                          _favoritesBloc.add(const FavoritesLoadRequested()),
+                      icon: const Icon(Icons.refresh, color: Colors.white70),
+                    ),
+                  ],
                 ),
               ),
+            ),
 
-              BlocProvider.value(
+            // ====== GRID YÊU THÍCH (không tự cuộn) ======
+            SliverToBoxAdapter(
+              child: BlocProvider.value(
                 value: _favoritesBloc,
-                child: FavoriteGrid(
-                  onTapManga: _openMangaDetail,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: FavoriteGrid(
+                    onTapManga: _openMangaDetail,
+                    // nếu FavoriteGrid của bạn đã set shrinkWrap + NeverScrollable,
+                    // để trống params là đủ. Nếu mình có expose thêm options, có thể set ở đây.
+                  ),
                 ),
               ),
+            ),
 
-              const SizedBox(height: 24),
+            // spacing
+            const SliverToBoxAdapter(child: SizedBox(height: 24)),
 
-              const Text(
-                "Lịch sử đọc",
-                style: TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
+            // ====== HEADER: LỊCH SỬ ======
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        "Lịch sử đọc",
+                        style: TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Làm mới',
+                      onPressed: () =>
+                          _historyBloc.add(const HistoryLoadRequested()),
+                      icon: const Icon(Icons.refresh, color: Colors.white70),
+                    ),
+                  ],
                 ),
               ),
+            ),
 
-              BlocProvider.value(
+            // ====== LIST LỊCH SỬ (không tự cuộn) ======
+            SliverToBoxAdapter(
+              child: BlocProvider.value(
                 value: _historyBloc,
-                child: HistoryList(
-                  onResumeReading: ({
-                    required String mangaId,
-                    required String chapterId,
-                    required int pageIndex,
-                  }) {
-                    _openReader(
-                      mangaId: mangaId,
-                      chapterId: chapterId,
-                      pageIndex: pageIndex,
-                    );
-                  },
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                  child: HistoryList(
+                    onResumeReading: ({
+                      required String mangaId,
+                      required String chapterId,
+                      required int pageIndex,
+                    }) {
+                      _openReader(
+                        mangaId: mangaId,
+                        chapterId: chapterId,
+                        pageIndex: pageIndex,
+                      );
+                    },
+                  ),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

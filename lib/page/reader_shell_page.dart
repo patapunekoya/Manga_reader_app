@@ -1,4 +1,5 @@
 // lib/page/reader_shell_page.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
@@ -8,25 +9,24 @@ import '../theme/colors.dart';
 
 // bloc đọc truyện
 import 'package:reader/presentation/bloc/reader_bloc.dart';
-// để dùng ReaderSetCurrentPage(PageIndex(...))
-import 'package:reader/domain/value_objects/page_index.dart';
 
-// UI hiển thị trang đọc + toolbar
+// UI view
 import 'package:reader/presentation/widgets/reader_view.dart';
 
-/// ReaderShellPage v2
-///
-/// Nhận:
-/// - mangaId: dùng để quay lại MangaDetail
-/// - chapters: toàn bộ danh sách chapterId theo thứ tự đọc (List<String>)
-/// - currentIndex: index hiện tại trong `chapters`
-/// - initialPageIndex: trang resume (ví dụ 12)
-///
-/// => Nhờ vậy ta biết prev/next chapter thật sự.
+// Lưu tiến trình theo CHAPTER
+import 'package:reader/application/usecases/save_read_progress.dart' as reader_uc;
+
 class ReaderShellPage extends StatefulWidget {
   final String mangaId;
   final int currentIndex;
   final List<String> chapters;
+
+  // optional: để hiển thị/ghi progress đẹp
+  final String mangaTitle;
+  final String? coverImageUrl;
+  final List<String>? chapterNumbers;
+
+  // vẫn giữ tham số này cho tương thích, nhưng không dùng nữa
   final int initialPageIndex;
 
   const ReaderShellPage({
@@ -34,7 +34,10 @@ class ReaderShellPage extends StatefulWidget {
     required this.mangaId,
     required this.currentIndex,
     required this.chapters,
-    required this.initialPageIndex,
+    required this.mangaTitle,
+    this.coverImageUrl,
+    this.chapterNumbers,
+    this.initialPageIndex = 0,
   });
 
   @override
@@ -43,25 +46,21 @@ class ReaderShellPage extends StatefulWidget {
 
 class _ReaderShellPageState extends State<ReaderShellPage> {
   late final ReaderBloc _bloc;
-
-  // giữ index chương hiện tại (mutable để next/prev đổi được)
   late int _currentIndex;
 
   String get _currentChapterId => widget.chapters[_currentIndex];
-
   bool get _hasPrev => _currentIndex > 0;
   bool get _hasNext => _currentIndex < widget.chapters.length - 1;
 
   @override
   void initState() {
     super.initState();
-
     _currentIndex = widget.currentIndex;
+    _bloc = GetIt.instance<ReaderBloc>()
+      ..add(ReaderLoadChapter(_currentChapterId));
 
-    _bloc = GetIt.instance<ReaderBloc>();
-
-    // load chương ban đầu
-    _bloc.add(ReaderLoadChapter(_currentChapterId));
+    // Lưu “chương đang đọc” NGAY khi vào chapter
+    _saveChapterProgress();
   }
 
   @override
@@ -70,12 +69,42 @@ class _ReaderShellPageState extends State<ReaderShellPage> {
     super.dispose();
   }
 
-  // ====== callback cho toolbar ======
-
-  void _handleBackToManga() {
-    // quay lại detail manga
-    context.go("/manga/${widget.mangaId}");
+  void _saveChapterProgress() async {
+    try {
+      final saver = GetIt.instance<reader_uc.SaveReadProgress>();
+      await saver(
+        mangaId: widget.mangaId,
+        mangaTitle: widget.mangaTitle,
+        coverImageUrl: widget.coverImageUrl,
+        chapterId: _currentChapterId,
+        chapterNumber: _currentChapterNumberForSave(),
+      );
+    } catch (_) {
+      // im lặng
+    }
   }
+
+  String _currentChapterNumberForSave() {
+    if (widget.chapterNumbers != null &&
+        _currentIndex >= 0 &&
+        _currentIndex < (widget.chapterNumbers!.length)) {
+      final num = widget.chapterNumbers![_currentIndex];
+      if (num.isNotEmpty) return num;
+    }
+    return _currentChapterId;
+  }
+
+  String _buildChapterLabel() {
+    if (widget.chapterNumbers != null &&
+        _currentIndex >= 0 &&
+        _currentIndex < (widget.chapterNumbers!.length)) {
+      final num = widget.chapterNumbers![_currentIndex];
+      if (num.isNotEmpty) return "Ch. $num";
+    }
+    return "Chapter ${_currentChapterId}";
+  }
+
+  void _handleBackToManga() => context.go("/manga/${widget.mangaId}");
 
   void _handlePrevChapter() {
     if (!_hasPrev) {
@@ -84,12 +113,9 @@ class _ReaderShellPageState extends State<ReaderShellPage> {
       );
       return;
     }
-
-    setState(() {
-      _currentIndex -= 1;
-    });
-
+    setState(() => _currentIndex -= 1);
     _bloc.add(ReaderLoadChapter(_currentChapterId));
+    _saveChapterProgress();
   }
 
   void _handleNextChapter() {
@@ -99,12 +125,9 @@ class _ReaderShellPageState extends State<ReaderShellPage> {
       );
       return;
     }
-
-    setState(() {
-      _currentIndex += 1;
-    });
-
+    setState(() => _currentIndex += 1);
     _bloc.add(ReaderLoadChapter(_currentChapterId));
+    _saveChapterProgress();
   }
 
   @override
@@ -115,39 +138,16 @@ class _ReaderShellPageState extends State<ReaderShellPage> {
         bottom: false,
         child: BlocProvider.value(
           value: _bloc,
-          child: BlocListener<ReaderBloc, ReaderState>(
-            listenWhen: (prev, curr) {
-              // Khi vừa load xong 1 chương mới thành công
-              final justLoaded = prev.status != ReaderStatus.success &&
-                  curr.status == ReaderStatus.success;
-
-              // Và chương trong state đúng là chương hiện tại mình muốn
-              final sameChapter = curr.chapterId == _currentChapterId;
-
-              return justLoaded && sameChapter;
+          child: BlocBuilder<ReaderBloc, ReaderState>(
+            builder: (context, state) {
+              final toolbarLabel = _buildChapterLabel();
+              return ReaderView(
+                onBackToManga: _handleBackToManga,
+                onPrevChapter: _handlePrevChapter,
+                onNextChapter: _handleNextChapter,
+                chapterLabel: toolbarLabel,
+              );
             },
-            listener: (context, state) {
-              // resume tới trang đã đọc dở chỉ khi mở lần đầu
-              if (widget.initialPageIndex > 0) {
-                context.read<ReaderBloc>().add(
-                      ReaderSetCurrentPage(
-                        PageIndex(widget.initialPageIndex),
-                      ),
-                    );
-              }
-            },
-            child: BlocBuilder<ReaderBloc, ReaderState>(
-              builder: (context, state) {
-                final toolbarLabel = "Chapter $_currentChapterId";
-
-                return ReaderView(
-                  onBackToManga: _handleBackToManga,
-                  onPrevChapter: _handlePrevChapter,
-                  onNextChapter: _handleNextChapter,
-                  chapterLabel: toolbarLabel,
-                );
-              },
-            ),
           ),
         ),
       ),

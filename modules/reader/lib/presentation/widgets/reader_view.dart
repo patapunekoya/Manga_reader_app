@@ -45,44 +45,25 @@ class ReaderView extends StatefulWidget {
 
 class _ReaderViewState extends State<ReaderView> {
   final _scrollController = ScrollController();
-
-  // Để tính current page hiển thị, ta track vị trí scroll
-  void _handleScroll() {
-    final bloc = context.read<ReaderBloc>();
-    final st = bloc.state;
-    if (st.pages.isEmpty) return;
-
-    // logic đơn giản: tính index gần đầu màn hình
-    final pos = _scrollController.position.pixels;
-    // height 800 1 trang? Không chính xác.
-    // Cách xịn là GlobalKey từng item để lấy offset thực tế,
-    // nhưng đó quá nặng cho MVP. Ta tạm dùng guess dựa itemExtent
-    // => thay vì Grid, ta render List với Intrinsic height,
-    // khó fix-height. Thôi MVP: bỏ tạm, gọi bloc khi user stop scroll
-    // -> Đỡ spam.
-  }
-
   Timer? _scrollDebounce;
+
   void _onScrollDebounced() {
     _scrollDebounce?.cancel();
-    _scrollDebounce = Timer(const Duration(milliseconds: 150), () {
+    _scrollDebounce = Timer(const Duration(milliseconds: 180), () {
       final bloc = context.read<ReaderBloc>();
       final st = bloc.state;
       if (st.pages.isEmpty) return;
 
-      // Thật sự accurate cần đo từng RenderBox.
-      // MVP giải pháp tương đối: lấy index gần cuối đã render trên màn.
-      // Ta sẽ tính bằng viewportFraction trung bình = 800 px / page
-      // Nói thẳng: manga page size khác nhau => ước lượng hơi ngu.
-      // Nhưng thôi, miễn chúng ta còn trong phạm vi lab, deal.
-
-      final approxPageHeight = 800.0; // ước lượng
+      // Ước lượng chiều cao 1 trang — giải pháp nhẹ, tránh GlobalKey nặng nề
+      const approxPageHeight = 800.0;
       final scrollPos = _scrollController.position.pixels;
       final idx = (scrollPos / approxPageHeight).floor();
-      final safeIdx =
-          idx.clamp(0, (st.pages.length - 1)).toInt();
+      final safeIdx = idx.clamp(0, (st.pages.length - 1)).toInt();
 
-      bloc.add(ReaderSetCurrentPage(PageIndex(safeIdx)));
+      // chỉ dispatch khi thật sự khác để tránh lưu spam
+      if (safeIdx != st.currentPage.value) {
+        bloc.add(ReaderSetCurrentPage(PageIndex(safeIdx)));
+      }
     });
   }
 

@@ -7,21 +7,14 @@ import '../../domain/entities/reading_progress.dart';
 
 /// HistoryList
 ///
-/// Hiển thị danh sách lịch sử đọc gần nhất.
-/// Khi user tap vào 1 item, callback [onResumeReading] sẽ được gọi,
-/// để màn shell (ở app chính) điều hướng sang Reader.
-///
-/// onResumeReading nhận named params:
-/// - chapterId
-/// - mangaId
-/// - pageIndex
-///
-/// => Shell có thể push("/reader/:chapterId?mangaId=...&page=...")
+/// Hiển thị danh sách lịch sử đọc gần nhất (theo CHAPTER đã đọc).
+/// Tap -> gọi [onResumeReading] để shell điều hướng sang Reader.
+/// Giữ tham số pageIndex = 0 cho tương thích router hiện tại.
 class HistoryList extends StatelessWidget {
   final void Function({
     required String chapterId,
     required String mangaId,
-    required int pageIndex,
+    required int pageIndex, // vẫn giữ để tương thích; luôn truyền 0
   })? onResumeReading;
 
   const HistoryList({
@@ -88,9 +81,9 @@ class HistoryList extends StatelessWidget {
               onTap: () {
                 if (onResumeReading != null) {
                   onResumeReading!(
-                    chapterId: item.chapterId,
+                    chapterId: item.lastChapterId, // CHAPTER-ONLY
                     mangaId: item.mangaId,
-                    pageIndex: item.pageIndex,
+                    pageIndex: 0, // luôn 0 để tương thích
                   );
                 }
               },
@@ -163,9 +156,9 @@ class _HistoryRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
 
-                // Chapter + page
+                // Chapter (CHAPTER-ONLY)
                 Text(
-                  "Chapter ${item.chapterNumber} • Trang ${item.pageIndex + 1}",
+                  "Chapter ${item.lastChapterNumber} • Đã đọc",
                   style: th.textTheme.bodySmall?.copyWith(
                     color: Colors.white70,
                     height: 1.3,

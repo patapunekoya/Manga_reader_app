@@ -1,7 +1,7 @@
-// modules/library/lib/application/usecases/save_read_progress.dart
-import '../../domain/repositories/library_repository.dart';
+// modules/reader/lib/application/usecases/save_read_progress.dart
+import 'package:library_manga/domain/repositories/library_repository.dart';
 
-/// Lưu chương gần nhất cho một manga (không có page).
+/// Facade để module reader gọi thẳng.
 class SaveReadProgress {
   final LibraryRepository _repo;
   const SaveReadProgress(this._repo);

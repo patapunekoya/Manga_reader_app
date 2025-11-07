@@ -14,7 +14,7 @@ import 'package:discovery/domain/value_objects/feed_cursor.dart';
 
 /// BuildHomeVM:
 /// Gom dữ liệu cho màn Home:
-/// - continueReading (đọc dở)
+/// - continueReading (đọc dở - theo CHAPTER gần nhất)
 /// - recommended (trending -> dùng cho carousel)
 /// - latestUpdates (manga mới cập nhật)
 class BuildHomeVM {
@@ -29,27 +29,29 @@ class BuildHomeVM {
   );
 
   Future<HomeVM> call() async {
-    // 1. lịch sử đọc local
+    // 1) Lịch sử đọc local (đã sort savedAt desc trong repo)
     final List<ReadingProgress> progressList = await _getContinueReading();
 
-    // 2. recommended = trending (lấy tầm 10 truyện hot)
+    // 2) recommended = trending (lấy tầm 10 truyện hot)
     final List<FeedItem> recommendedList = await _getTrending(
       cursor: const FeedCursor(offset: 0, limit: 10),
     );
 
-    // 3. latest updates (lấy tầm 10 truyện mới update)
+    // 3) latest updates (lấy tầm 10 truyện mới update)
     final List<FeedItem> latestList = await _getLatestUpdates(
       cursor: const FeedCursor(offset: 0, limit: 10),
     );
 
-    // map progress -> ContinueReadingItemVM
+    // Map progress -> ContinueReadingItemVM
+    // Tiến trình theo CHAPTER: dùng lastChapterId/lastChapterNumber, không dùng pageIndex
     final continueVMs = progressList.map((p) {
       return ContinueReadingItemVM(
         mangaId: p.mangaId,
         mangaTitle: p.mangaTitle,
-        chapterId: p.chapterId,
-        chapterNumber: p.chapterNumber,
-        pageIndex: p.pageIndex,
+        chapterId: p.lastChapterId,
+        chapterNumber: p.lastChapterNumber,
+        // Nếu ContinueReadingItemVM vẫn còn field pageIndex, đặt 0 cho tương thích
+        pageIndex: 0,
         coverImageUrl: p.coverImageUrl,
       );
     }).toList();

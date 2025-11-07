@@ -1,4 +1,4 @@
-// lib/presentation/widgets/chapter_tile.dart
+// modules/catalog/lib/presentation/widgets/chapter_tile.dart
 import 'package:flutter/material.dart';
 import '../../domain/entities/chapter.dart';
 
@@ -6,76 +6,53 @@ class ChapterTile extends StatelessWidget {
   final Chapter chapter;
   final VoidCallback? onTap;
 
+  /// isRead = chương này là CHƯƠNG GẦN NHẤT đã đọc của manga (đánh dấu ngôi sao)
+  final bool isRead;
+
   const ChapterTile({
     super.key,
     required this.chapter,
     this.onTap,
+    this.isRead = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final th = Theme.of(context);
-    final timeText = chapter.updatedAt != null
-        ? chapter.updatedAt!.toIso8601String()
-        : '';
-
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          vertical: 12,
-          horizontal: 16,
-        ),
-        decoration: const BoxDecoration(
-          border: Border(
-            bottom: BorderSide(color: Color(0x22FFFFFF), width: 0.5),
-          ),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: RichText(
-                text: TextSpan(
-                  style: th.textTheme.bodyMedium?.copyWith(
-                    color: Colors.white,
-                  ),
-                  children: [
-                    TextSpan(
-                      text: "Chapter ${chapter.chapterNumber}",
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (chapter.title != null &&
-                        chapter.title!.trim().isNotEmpty) ...[
-                      const TextSpan(text: " • "),
-                      TextSpan(
-                        text: chapter.title,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w400,
-                          color: Colors.white70,
-                        ),
-                      ),
-                    ],
-                    if (timeText.isNotEmpty) ...[
-                      const TextSpan(text: "\n"),
-                      TextSpan(
-                        text: timeText,
-                        style: const TextStyle(
-                          color: Colors.grey,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ],
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              // tiêu đề chương
+              Expanded(
+                child: Text(
+                  (chapter.title != null && chapter.title!.trim().isNotEmpty)
+                      ? chapter.title!
+                      : 'Ch. ${chapter.chapterNumber}',
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-            ),
-            const Icon(
-              Icons.chevron_right,
-              color: Colors.white54,
-            ),
-          ],
+
+              // icon “đã đọc” (ngôi sao)
+              if (isRead) ...[
+                const SizedBox(width: 8),
+                const Icon(Icons.star_rounded, color: Colors.amber, size: 18),
+              ],
+
+              // (tuỳ chọn) ngôn ngữ
+              if (chapter.language != null) ...[
+                const SizedBox(width: 8),
+                Text(
+                  chapter.language!,
+                  style: const TextStyle(color: Colors.white38, fontSize: 12),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );

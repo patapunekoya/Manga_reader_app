@@ -1,54 +1,45 @@
-// lib/domain/entities/reading_progress.dart
+// modules/library/lib/domain/entities/reading_progress.dart
 import 'package:equatable/equatable.dart';
 import '../value_objects/progress_id.dart';
 
-/// ReadingProgress:
-/// Lưu tiến trình đọc cuối cùng của user cho 1 chapter.
-///
-/// Ta giữ:
-/// - chapterId
-/// - mangaId
-/// - mangaTitle để show "Continue reading"
-/// - coverImageUrl để show thumbnail
-/// - chapterNumber để hiển thị "Ch.123"
-/// - pageIndex (trang đang đọc dở)
-/// - savedAt (thời điểm lưu -> dùng sort 'tiếp tục đọc')
+/// ReadingProgress theo CHAPTER:
+/// - Key lưu theo mangaId (mỗi manga chỉ có 1 record - chương gần nhất)
+/// - Lưu lastChapterId + lastChapterNumber + savedAt (không lưu page)
 class ReadingProgress extends Equatable {
-  final ProgressId id; // chapterId
-  final String chapterId;
+  final ProgressId id;          // dùng mangaId làm id
   final String mangaId;
   final String mangaTitle;
   final String? coverImageUrl;
-  final String chapterNumber;
-  final int pageIndex;
+
+  final String lastChapterId;
+  final String lastChapterNumber;
+
   final DateTime savedAt;
 
   const ReadingProgress({
     required this.id,
-    required this.chapterId,
     required this.mangaId,
     required this.mangaTitle,
     required this.coverImageUrl,
-    required this.chapterNumber,
-    required this.pageIndex,
+    required this.lastChapterId,
+    required this.lastChapterNumber,
     required this.savedAt,
   });
 
   ReadingProgress copyWith({
     String? mangaTitle,
     String? coverImageUrl,
-    String? chapterNumber,
-    int? pageIndex,
+    String? lastChapterId,
+    String? lastChapterNumber,
     DateTime? savedAt,
   }) {
     return ReadingProgress(
       id: id,
-      chapterId: chapterId,
       mangaId: mangaId,
       mangaTitle: mangaTitle ?? this.mangaTitle,
       coverImageUrl: coverImageUrl ?? this.coverImageUrl,
-      chapterNumber: chapterNumber ?? this.chapterNumber,
-      pageIndex: pageIndex ?? this.pageIndex,
+      lastChapterId: lastChapterId ?? this.lastChapterId,
+      lastChapterNumber: lastChapterNumber ?? this.lastChapterNumber,
       savedAt: savedAt ?? this.savedAt,
     );
   }
@@ -56,12 +47,11 @@ class ReadingProgress extends Equatable {
   @override
   List<Object?> get props => [
         id,
-        chapterId,
         mangaId,
         mangaTitle,
         coverImageUrl,
-        chapterNumber,
-        pageIndex,
+        lastChapterId,
+        lastChapterNumber,
         savedAt,
       ];
 }

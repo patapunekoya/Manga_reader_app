@@ -1,7 +1,5 @@
-// lib/presentation/bloc/favorites_event.dart
 part of 'favorites_bloc.dart';
 
-@immutable
 abstract class FavoritesEvent extends Equatable {
   const FavoritesEvent();
   @override
@@ -12,11 +10,14 @@ class FavoritesLoadRequested extends FavoritesEvent {
   const FavoritesLoadRequested();
 }
 
+class FavoritesRefreshRequested extends FavoritesEvent {
+  const FavoritesRefreshRequested();
+}
+
 class FavoritesToggleRequested extends FavoritesEvent {
   final String mangaId;
   final String title;
   final String? coverImageUrl;
-
   const FavoritesToggleRequested({
     required this.mangaId,
     required this.title,

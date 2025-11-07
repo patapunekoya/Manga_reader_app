@@ -1,4 +1,3 @@
-// lib/presentation/bloc/manga_detail_state.dart
 part of 'manga_detail_bloc.dart';
 
 enum MangaDetailStatus {
@@ -12,15 +11,12 @@ enum MangaDetailStatus {
 
 class MangaDetailState extends Equatable {
   final MangaDetailStatus status;
-
   final String mangaId;
   final Manga? manga;
-
   final List<Chapter> chapters;
-  final bool ascending; // true = asc, false = desc
+  final bool ascending;
   final bool hasMoreChapters;
   final int chapterOffset;
-
   final String? errorMessage;
 
   const MangaDetailState({
@@ -39,7 +35,7 @@ class MangaDetailState extends Equatable {
         mangaId = '',
         manga = null,
         chapters = const [],
-        ascending = false, // default desc (chương mới nhất lên đầu)
+        ascending = true, // vào mặc định ASC như yêu cầu mới
         hasMoreChapters = true,
         chapterOffset = 0,
         errorMessage = null;
