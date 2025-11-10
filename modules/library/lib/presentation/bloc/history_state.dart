@@ -1,12 +1,6 @@
-// lib/presentation/bloc/history_state.dart
 part of 'history_bloc.dart';
 
-enum HistoryStatus {
-  initial,
-  loading,
-  success,
-  failure,
-}
+enum HistoryStatus { initial, loading, success, failure }
 
 class HistoryState extends Equatable {
   final HistoryStatus status;
@@ -16,7 +10,7 @@ class HistoryState extends Equatable {
   const HistoryState({
     required this.status,
     required this.history,
-    required this.errorMessage,
+    this.errorMessage,
   });
 
   const HistoryState.initial()
@@ -32,7 +26,7 @@ class HistoryState extends Equatable {
     return HistoryState(
       status: status ?? this.status,
       history: history ?? this.history,
-      errorMessage: errorMessage ?? this.errorMessage,
+      errorMessage: errorMessage,
     );
   }
 

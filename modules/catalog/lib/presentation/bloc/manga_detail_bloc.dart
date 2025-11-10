@@ -12,7 +12,6 @@ import '../../domain/value_objects/language_code.dart';
 // Favorite usecases (từ module library_manga)
 import 'package:library_manga/application/usecases/get_favorites.dart';
 import 'package:library_manga/application/usecases/toggle_favorite.dart';
-import 'package:library_manga/domain/entities/favorite_item.dart';
 
 part 'manga_detail_event.dart';
 part 'manga_detail_state.dart';
@@ -21,7 +20,7 @@ class MangaDetailBloc extends Bloc<MangaDetailEvent, MangaDetailState> {
   final GetMangaDetail _getMangaDetail;
   final ListChapters _listChapters;
 
-  // NEW: favorite
+  // favorite
   final GetFavorites _getFavorites;
   final ToggleFavorite _toggleFavorite;
 
@@ -42,6 +41,18 @@ class MangaDetailBloc extends Bloc<MangaDetailEvent, MangaDetailState> {
     on<MangaDetailLoadMoreChapters>(_onLoadMoreChapters);
     on<MangaDetailFavoriteToggled>(_onFavoriteToggled);
     on<MangaDetailRefreshFavorite>(_onRefreshFavorite);
+    on<MangaDetailSelectLanguage>(_onSelectLanguage);
+  }
+
+  // Rút danh sách ngôn ngữ từ list chapter
+  List<String> _extractLanguages(List<Chapter> chapters) {
+    final set = <String>{};
+    for (final c in chapters) {
+      final lang = c.language?.trim();
+      if (lang != null && lang.isNotEmpty) set.add(lang);
+    }
+    final list = set.toList()..sort();
+    return list;
   }
 
   Future<void> _onLoadRequested(
@@ -51,27 +62,34 @@ class MangaDetailBloc extends Bloc<MangaDetailEvent, MangaDetailState> {
     emit(state.copyWith(
       status: MangaDetailStatus.loading,
       mangaId: event.mangaId,
+      chapters: const [],
+      hasMoreChapters: true,
+      chapterOffset: 0,
+      availableLanguages: const [],
+      selectedLanguage: null, // mặc định All
     ));
 
     try {
-      // fetch detail
-      final manga = await _getMangaDetail(
-        mangaId: MangaId(event.mangaId),
-      );
+      // 1) fetch detail
+      final manga = await _getMangaDetail(mangaId: MangaId(event.mangaId));
 
-      // fetch chapters (ASC mặc định như yêu cầu trước)
+      // 2) favorite state
+      final favs = await _getFavorites();
+      final isFav = favs.any((f) => f.id.value == event.mangaId);
+      final patched = manga.copyWith(isFavorite: isFav);
+
+      // 3) fetch chapters theo selectedLanguage hiện tại (null = All)
+      final selectedLang = state.selectedLanguage;
       final chapters = await _listChapters(
         mangaId: MangaId(event.mangaId),
         ascending: state.ascending,
-        languageFilter: const LanguageCode('en'),
+        // NOTE: ListChapters nên nhận LanguageCode? (nullable). Nếu chưa, sửa usecase.
+        languageFilter: selectedLang == null ? null : LanguageCode(selectedLang),
         offset: 0,
         limit: pageSize,
       );
 
-      // favorite state
-      final favs = await _getFavorites();
-      final isFav = favs.any((f) => f.id.value == event.mangaId);
-      final patched = manga.copyWith(isFavorite: isFav);
+      final langs = _extractLanguages(chapters);
 
       emit(state.copyWith(
         status: MangaDetailStatus.success,
@@ -79,6 +97,7 @@ class MangaDetailBloc extends Bloc<MangaDetailEvent, MangaDetailState> {
         chapters: chapters,
         hasMoreChapters: chapters.length == pageSize,
         chapterOffset: chapters.length,
+        availableLanguages: langs,
         errorMessage: null,
       ));
     } catch (e) {
@@ -102,19 +121,23 @@ class MangaDetailBloc extends Bloc<MangaDetailEvent, MangaDetailState> {
     ));
 
     try {
+      final selectedLang = state.selectedLanguage;
       final newChapters = await _listChapters(
         mangaId: MangaId(state.mangaId),
         ascending: !state.ascending,
-        languageFilter: const LanguageCode('en'),
+        languageFilter: selectedLang == null ? null : LanguageCode(selectedLang),
         offset: 0,
         limit: pageSize,
       );
+
+      final langs = _extractLanguages(newChapters);
 
       emit(state.copyWith(
         status: MangaDetailStatus.success,
         chapters: newChapters,
         hasMoreChapters: newChapters.length == pageSize,
         chapterOffset: newChapters.length,
+        availableLanguages: langs,
       ));
     } catch (e) {
       emit(state.copyWith(
@@ -136,19 +159,24 @@ class MangaDetailBloc extends Bloc<MangaDetailEvent, MangaDetailState> {
     emit(state.copyWith(status: MangaDetailStatus.loadingMoreChapters));
 
     try {
+      final selectedLang = state.selectedLanguage;
       final more = await _listChapters(
         mangaId: MangaId(state.mangaId),
         ascending: state.ascending,
-        languageFilter: const LanguageCode('en'),
+        languageFilter: selectedLang == null ? null : LanguageCode(selectedLang),
         offset: state.chapterOffset,
         limit: pageSize,
       );
 
+      final merged = [...state.chapters, ...more];
+      final langs = _extractLanguages(merged);
+
       emit(state.copyWith(
         status: MangaDetailStatus.success,
-        chapters: [...state.chapters, ...more],
+        chapters: merged,
         hasMoreChapters: more.length == pageSize,
         chapterOffset: state.chapterOffset + more.length,
+        availableLanguages: langs,
       ));
     } catch (e) {
       emit(state.copyWith(
@@ -163,10 +191,10 @@ class MangaDetailBloc extends Bloc<MangaDetailEvent, MangaDetailState> {
     MangaDetailFavoriteToggled event,
     Emitter<MangaDetailState> emit,
   ) async {
-    // Optimistic UI: flip ngay
     final current = state.manga;
     if (current == null) return;
 
+    // Optimistic
     final flipped = current.copyWith(isFavorite: !current.isFavorite);
     emit(state.copyWith(manga: flipped));
 
@@ -176,9 +204,8 @@ class MangaDetailBloc extends Bloc<MangaDetailEvent, MangaDetailState> {
         title: current.title,
         coverImageUrl: current.coverImageUrl,
       );
-      // sau khi toggle xong, có thể refresh Favorites tab ở nơi khác bằng bloc riêng
     } catch (e) {
-      // nếu fail thì revert
+      // revert nếu lỗi
       emit(state.copyWith(manga: current));
     }
   }
@@ -195,7 +222,49 @@ class MangaDetailBloc extends Bloc<MangaDetailEvent, MangaDetailState> {
       final isFav = favs.any((f) => f.id.value == state.mangaId);
       emit(state.copyWith(manga: current.copyWith(isFavorite: isFav)));
     } catch (_) {
-      // im lặng, khỏi quấy UI
+      // im lặng
+    }
+  }
+
+  /// Chọn ngôn ngữ -> reload chương từ đầu
+  Future<void> _onSelectLanguage(
+    MangaDetailSelectLanguage event,
+    Emitter<MangaDetailState> emit,
+  ) async {
+    if (state.mangaId.isEmpty) return;
+
+    emit(state.copyWith(
+      status: MangaDetailStatus.loadingChapters,
+      selectedLanguage: event.language, // null = All
+      chapters: const [],
+      hasMoreChapters: true,
+      chapterOffset: 0,
+    ));
+
+    try {
+      final chapters = await _listChapters(
+        mangaId: MangaId(state.mangaId),
+        ascending: state.ascending,
+        languageFilter:
+            event.language == null ? null : LanguageCode(event.language!),
+        offset: 0,
+        limit: pageSize,
+      );
+
+      final langs = _extractLanguages(chapters);
+
+      emit(state.copyWith(
+        status: MangaDetailStatus.success,
+        chapters: chapters,
+        hasMoreChapters: chapters.length == pageSize,
+        chapterOffset: chapters.length,
+        availableLanguages: langs,
+      ));
+    } catch (e) {
+      emit(state.copyWith(
+        status: MangaDetailStatus.failure,
+        errorMessage: e.toString(),
+      ));
     }
   }
 }

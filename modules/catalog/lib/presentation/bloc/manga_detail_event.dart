@@ -1,6 +1,5 @@
 part of 'manga_detail_bloc.dart';
 
-@immutable
 abstract class MangaDetailEvent extends Equatable {
   const MangaDetailEvent();
   @override
@@ -10,7 +9,6 @@ abstract class MangaDetailEvent extends Equatable {
 class MangaDetailLoadRequested extends MangaDetailEvent {
   final String mangaId;
   const MangaDetailLoadRequested(this.mangaId);
-
   @override
   List<Object?> get props => [mangaId];
 }
@@ -23,12 +21,19 @@ class MangaDetailLoadMoreChapters extends MangaDetailEvent {
   const MangaDetailLoadMoreChapters();
 }
 
-// NEW: toggle favorite
 class MangaDetailFavoriteToggled extends MangaDetailEvent {
   const MangaDetailFavoriteToggled();
 }
 
-// NEW: sync lại trạng thái favorite từ repo (nếu cần)
 class MangaDetailRefreshFavorite extends MangaDetailEvent {
   const MangaDetailRefreshFavorite();
+}
+
+/// Chọn ngôn ngữ; null = All
+class MangaDetailSelectLanguage extends MangaDetailEvent {
+  final String? language;
+  const MangaDetailSelectLanguage(this.language);
+
+  @override
+  List<Object?> get props => [language];
 }

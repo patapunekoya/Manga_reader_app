@@ -14,14 +14,17 @@ class Manga extends Equatable {
   final String? authorName;
   final int? year;
 
-  /// Thời điểm cập nhật gần nhất (từ MangaDex: updatedAt/publishAt/readableAt... tùy mapper).
+  /// Thời điểm cập nhật gần nhất (nếu parse được từ MangaDex)
   final DateTime? updatedAt;
 
   /// Nếu lấy được (bayesian rating) thì gán, không thì null.
   final double? rating;
 
-  /// Local state (favorite) – có thể map ở repository khác/hive.
+  /// Local state (favorite) – map ở repository khác/hive.
   final bool isFavorite;
+
+  /// NEW: danh sách ngôn ngữ có chapter cho manga này (từ attributes.availableTranslatedLanguage)
+  final List<String> availableLanguages;
 
   const Manga({
     required this.id,
@@ -35,6 +38,7 @@ class Manga extends Equatable {
     required this.updatedAt,
     required this.rating,
     required this.isFavorite,
+    required this.availableLanguages, // NEW
   });
 
   Manga copyWith({
@@ -48,6 +52,7 @@ class Manga extends Equatable {
     DateTime? updatedAt,
     double? rating,
     bool? isFavorite,
+    List<String>? availableLanguages, // NEW
   }) {
     return Manga(
       id: id,
@@ -61,6 +66,7 @@ class Manga extends Equatable {
       updatedAt: updatedAt ?? this.updatedAt,
       rating: rating ?? this.rating,
       isFavorite: isFavorite ?? this.isFavorite,
+      availableLanguages: availableLanguages ?? this.availableLanguages,
     );
   }
 
@@ -77,5 +83,6 @@ class Manga extends Equatable {
         updatedAt,
         rating,
         isFavorite,
+        availableLanguages, // NEW
       ];
 }

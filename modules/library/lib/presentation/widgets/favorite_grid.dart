@@ -1,14 +1,19 @@
-// packages/library_manga/lib/presentation/widgets/favorite_grid.dart
+// modules/library/lib/presentation/widgets/favorite_grid.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/favorites_bloc.dart';
+import '../../domain/entities/favorite_item.dart'; // <-- cần import để dùng FavoriteItem
 
 class FavoriteGrid extends StatelessWidget {
   final void Function(String mangaId)? onTapManga;
 
+  /// NEW: nhấn-giữ để gỡ khỏi yêu thích (confirm ở ngoài)
+  final void Function(FavoriteItem item)? onLongPressManga;
+
   const FavoriteGrid({
     super.key,
     this.onTapManga,
+    this.onLongPressManga,
   });
 
   @override
@@ -34,7 +39,7 @@ class FavoriteGrid extends StatelessWidget {
           );
         }
 
-        final items = state.items; // đảm bảo FavoritesState có 'items'
+        final items = state.items;
         if (items.isEmpty) {
           return const Padding(
             padding: EdgeInsets.symmetric(vertical: 8),
@@ -45,7 +50,6 @@ class FavoriteGrid extends StatelessWidget {
           );
         }
 
-        // ✅ Không tự cuộn + tính chiều cao theo nội dung
         return GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -54,12 +58,13 @@ class FavoriteGrid extends StatelessWidget {
             crossAxisCount: 3,
             mainAxisSpacing: 12,
             crossAxisSpacing: 12,
-            childAspectRatio: 3 / 5, // ảnh 3:4 + phần text
+            childAspectRatio: 3 / 5,
           ),
           itemBuilder: (context, index) {
             final it = items[index];
             return GestureDetector(
               onTap: () => onTapManga?.call(it.id.value),
+              onLongPress: () => onLongPressManga?.call(it), // <-- thêm nè
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -72,8 +77,11 @@ class FavoriteGrid extends StatelessWidget {
                           : Container(
                               color: const Color(0xFF2A2A2D),
                               alignment: Alignment.center,
-                              child: const Icon(Icons.menu_book_rounded,
-                                  color: Colors.white38, size: 28),
+                              child: const Icon(
+                                Icons.menu_book_rounded,
+                                color: Colors.white38,
+                                size: 28,
+                              ),
                             ),
                     ),
                   ),

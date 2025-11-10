@@ -1,4 +1,3 @@
-// lib/presentation/bloc/history_event.dart
 part of 'history_bloc.dart';
 
 @immutable
@@ -10,4 +9,8 @@ abstract class HistoryEvent extends Equatable {
 
 class HistoryLoadRequested extends HistoryEvent {
   const HistoryLoadRequested();
+}
+
+class HistoryClearAllRequested extends HistoryEvent {
+  const HistoryClearAllRequested();
 }

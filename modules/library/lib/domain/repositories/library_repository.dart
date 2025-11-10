@@ -1,4 +1,3 @@
-// modules/library/lib/domain/repositories/library_repository.dart
 import '../entities/favorite_item.dart';
 import '../entities/reading_progress.dart';
 
@@ -11,7 +10,7 @@ abstract class LibraryRepository {
 
   Future<List<FavoriteItem>> getFavorites();
 
-  /// Lưu CHAPTER gần nhất cho MANGA (ghi đè theo mangaId)
+  // Đánh dấu tiến trình theo MANGA (chỉ lưu lastChapter)
   Future<void> saveReadProgress({
     required String mangaId,
     required String mangaTitle,
@@ -20,9 +19,14 @@ abstract class LibraryRepository {
     required String chapterNumber,
   });
 
-  /// Lấy danh sách manga có “đọc tiếp” (sort savedAt desc)
   Future<List<ReadingProgress>> getContinueReading();
 
-  /// Lấy progress cho 1 manga (null nếu chưa có)
+  // Lấy 1 progress theo mangaId (để “Đọc tiếp” chính xác)
   Future<ReadingProgress?> getProgressForManga(String mangaId);
+
+  // NEW: xóa sạch lịch sử đọc
+  Future<void> clearAllProgress();
+
+  // Optional: xóa 1 favorite theo mangaId (long-press confirm sẽ gọi toggle cũng được)
+  Future<void> removeFavorite(String mangaId);
 }

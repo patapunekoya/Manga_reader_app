@@ -1,4 +1,3 @@
-// lib/page/library_shell_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
@@ -13,6 +12,10 @@ import 'package:library_manga/presentation/bloc/history_bloc.dart';
 // Widgets
 import 'package:library_manga/presentation/widgets/favorite_grid.dart';
 import 'package:library_manga/presentation/widgets/history_list.dart';
+
+// Usecase để toggle favorite
+import 'package:library_manga/application/usecases/toggle_favorite.dart';
+import 'package:library_manga/domain/entities/favorite_item.dart';
 
 class LibraryShellPage extends StatefulWidget {
   const LibraryShellPage({super.key});
@@ -53,6 +56,54 @@ class _LibraryShellPageState extends State<LibraryShellPage> {
     context.push("/manga/$mangaId");
   }
 
+  Future<void> _confirmAndRemoveFavorite(FavoriteItem item) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Gỡ khỏi yêu thích?"),
+        content: Text('Xóa “${item.title}” khỏi danh sách yêu thích?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Hủy")),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Xóa")),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    final sl = GetIt.instance;
+    final toggle = sl<ToggleFavorite>();
+    await toggle(
+      mangaId: item.id.value,
+      title: item.title,
+      coverImageUrl: item.coverImageUrl,
+    );
+
+    _favoritesBloc.add(const FavoritesLoadRequested());
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Đã gỡ khỏi yêu thích")),
+    );
+  }
+
+  Future<void> _confirmAndClearHistory() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Xóa toàn bộ lịch sử đọc?"),
+        content: const Text("Hành động này sẽ xóa toàn bộ tiến trình đọc đã lưu."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Hủy")),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Xóa hết")),
+        ],
+      ),
+    );
+    if (ok == true) {
+      _historyBloc.add(const HistoryClearAllRequested());
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Đã xóa toàn bộ lịch sử đọc")),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -79,8 +130,7 @@ class _LibraryShellPageState extends State<LibraryShellPage> {
                     ),
                     IconButton(
                       tooltip: 'Làm mới',
-                      onPressed: () =>
-                          _favoritesBloc.add(const FavoritesLoadRequested()),
+                      onPressed: () => _favoritesBloc.add(const FavoritesLoadRequested()),
                       icon: const Icon(Icons.refresh, color: Colors.white70),
                     ),
                   ],
@@ -96,14 +146,13 @@ class _LibraryShellPageState extends State<LibraryShellPage> {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: FavoriteGrid(
                     onTapManga: _openMangaDetail,
-                    // nếu FavoriteGrid của bạn đã set shrinkWrap + NeverScrollable,
-                    // để trống params là đủ. Nếu mình có expose thêm options, có thể set ở đây.
+                    // NHẤN-GIỮ để gỡ
+                    onLongPressManga: _confirmAndRemoveFavorite,
                   ),
                 ),
               ),
             ),
 
-            // spacing
             const SliverToBoxAdapter(child: SizedBox(height: 24)),
 
             // ====== HEADER: LỊCH SỬ ======
@@ -122,10 +171,14 @@ class _LibraryShellPageState extends State<LibraryShellPage> {
                         ),
                       ),
                     ),
+                    TextButton.icon(
+                      onPressed: _confirmAndClearHistory,
+                      icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+                      label: const Text("Xóa tất cả"),
+                    ),
                     IconButton(
                       tooltip: 'Làm mới',
-                      onPressed: () =>
-                          _historyBloc.add(const HistoryLoadRequested()),
+                      onPressed: () => _historyBloc.add(const HistoryLoadRequested()),
                       icon: const Icon(Icons.refresh, color: Colors.white70),
                     ),
                   ],

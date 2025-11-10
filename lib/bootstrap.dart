@@ -168,8 +168,14 @@ Future<void> bootstrap() async {
 
   // 8) Blocs
   if (!sl.isRegistered<HistoryBloc>()) {
-    sl.registerFactory<HistoryBloc>(() => HistoryBloc(getContinueReading: sl<GetContinueReading>()));
+    sl.registerFactory<HistoryBloc>(() => HistoryBloc(
+      getContinueReading: sl<GetContinueReading>(),
+      repo: sl<LibraryRepository>(),
+    ));
   }
+
+
+
   if (!sl.isRegistered<FavoritesBloc>()) {
     sl.registerFactory<FavoritesBloc>(() => FavoritesBloc(
           getFavorites: sl<GetFavorites>(),

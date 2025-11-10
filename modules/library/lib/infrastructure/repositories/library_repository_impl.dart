@@ -1,4 +1,3 @@
-// modules/library/lib/infrastructure/repositories/library_repository_impl.dart
 import 'package:library_manga/domain/entities/favorite_item.dart';
 import 'package:library_manga/domain/entities/reading_progress.dart';
 import 'package:library_manga/domain/repositories/library_repository.dart';
@@ -18,7 +17,6 @@ class LibraryRepositoryImpl implements LibraryRepository {
   }) async {
     final existing = _local.getFavoriteRaw(mangaId);
     final now = DateTime.now().millisecondsSinceEpoch;
-
     if (existing != null) {
       await _local.deleteFavorite(mangaId);
     } else {
@@ -33,14 +31,20 @@ class LibraryRepositoryImpl implements LibraryRepository {
   }
 
   @override
+  Future<void> removeFavorite(String mangaId) async {
+    await _local.deleteFavorite(mangaId);
+  }
+
+  @override
   Future<List<FavoriteItem>> getFavorites() async {
     final rawList = _local.getAllFavoritesRaw();
     final items = rawList.map((raw) {
-      final mangaId = raw['mangaId']?.toString() ?? '';
-      final title   = raw['title']?.toString() ?? '';
-      final cover   = raw['coverImageUrl']?.toString();
-      final addedAtMs  = raw['addedAt'] is int ? raw['addedAt'] as int : 0;
-      final updatedAtMs= raw['updatedAt'] is int ? raw['updatedAt'] as int : addedAtMs;
+      final mangaId   = raw['mangaId']?.toString() ?? '';
+      final title     = raw['title']?.toString() ?? '';
+      final cover     = raw['coverImageUrl']?.toString();
+      final addedAtMs = raw['addedAt'] is int ? raw['addedAt'] as int : 0;
+      final updatedAtMs = raw['updatedAt'] is int ? raw['updatedAt'] as int : addedAtMs;
+
       return FavoriteItem(
         id: FavoriteId(mangaId),
         title: title,
@@ -119,5 +123,10 @@ class LibraryRepositoryImpl implements LibraryRepository {
       lastChapterNumber: lastNum,
       savedAt: DateTime.fromMillisecondsSinceEpoch(savedAtMs),
     );
+  }
+
+  @override
+  Future<void> clearAllProgress() async {
+    await _local.clearAllProgress();
   }
 }

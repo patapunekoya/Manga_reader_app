@@ -13,10 +13,16 @@ class MangaDetailState extends Equatable {
   final MangaDetailStatus status;
   final String mangaId;
   final Manga? manga;
+
   final List<Chapter> chapters;
   final bool ascending;
   final bool hasMoreChapters;
   final int chapterOffset;
+
+  // Filter ngôn ngữ
+  final List<String> availableLanguages; // ví dụ ['en','vi','id']
+  final String? selectedLanguage;        // null = All
+
   final String? errorMessage;
 
   const MangaDetailState({
@@ -27,6 +33,8 @@ class MangaDetailState extends Equatable {
     required this.ascending,
     required this.hasMoreChapters,
     required this.chapterOffset,
+    required this.availableLanguages,
+    required this.selectedLanguage,
     required this.errorMessage,
   });
 
@@ -35,9 +43,11 @@ class MangaDetailState extends Equatable {
         mangaId = '',
         manga = null,
         chapters = const [],
-        ascending = true, // vào mặc định ASC như yêu cầu mới
+        ascending = true,
         hasMoreChapters = true,
         chapterOffset = 0,
+        availableLanguages = const [],
+        selectedLanguage = null,
         errorMessage = null;
 
   MangaDetailState copyWith({
@@ -48,6 +58,8 @@ class MangaDetailState extends Equatable {
     bool? ascending,
     bool? hasMoreChapters,
     int? chapterOffset,
+    List<String>? availableLanguages,
+    String? selectedLanguage,
     String? errorMessage,
   }) {
     return MangaDetailState(
@@ -58,6 +70,8 @@ class MangaDetailState extends Equatable {
       ascending: ascending ?? this.ascending,
       hasMoreChapters: hasMoreChapters ?? this.hasMoreChapters,
       chapterOffset: chapterOffset ?? this.chapterOffset,
+      availableLanguages: availableLanguages ?? this.availableLanguages,
+      selectedLanguage: selectedLanguage ?? this.selectedLanguage,
       errorMessage: errorMessage ?? this.errorMessage,
     );
   }
@@ -71,6 +85,8 @@ class MangaDetailState extends Equatable {
         ascending,
         hasMoreChapters,
         chapterOffset,
+        availableLanguages,
+        selectedLanguage,
         errorMessage,
       ];
 }

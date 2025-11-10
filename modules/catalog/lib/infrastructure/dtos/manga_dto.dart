@@ -4,7 +4,6 @@ import '../../domain/value_objects/manga_id.dart';
 
 /// MangaDto: trung gian giữa JSON của MangaDex và Manga entity.
 /// Chứa logic parse JSON và relationships.
-
 class MangaDto {
   final String id;
   final String title;
@@ -21,6 +20,9 @@ class MangaDto {
   /// Điểm rating (nếu sau này lấy từ statistics)
   final double? rating;
 
+  /// NEW: danh sách ngôn ngữ thực sự có chapter
+  final List<String> availableLanguages;
+
   MangaDto({
     required this.id,
     required this.title,
@@ -32,6 +34,7 @@ class MangaDto {
     required this.year,
     required this.updatedAt,
     required this.rating,
+    required this.availableLanguages, // NEW
   });
 
   /// parse từ json /manga item (có relationships)
@@ -49,7 +52,6 @@ class MangaDto {
       if (titleMap.isNotEmpty) return titleMap.values.first.toString();
       return 'Unknown Title';
     }
-
     final title = pickTitle((attrs['title'] as Map<String, dynamic>? ?? {}));
 
     // -------- description ----------
@@ -59,7 +61,6 @@ class MangaDto {
       if (descMap.isNotEmpty) return descMap.values.first.toString();
       return null;
     }
-
     final description =
         pickDesc((attrs['description'] as Map<String, dynamic>? ?? {}));
 
@@ -89,8 +90,6 @@ class MangaDto {
     }
 
     // -------- rating ----------
-    // MangaDex statistics (bayesianRating) thường ở endpoint khác.
-    // Ở đây để null; nếu sau này có dto/statistics riêng thì gán vào.
     double? rating;
 
     // -------- authorName từ relationships ----------
@@ -113,7 +112,6 @@ class MangaDto {
         final coverAttrs = (rel['attributes'] as Map<String, dynamic>? ?? {});
         final fileName = coverAttrs['fileName']?.toString();
         if (fileName != null && fileName.isNotEmpty) {
-          // có thể đổi 256 -> 512 nếu cần
           coverImageUrl =
               'https://uploads.mangadex.org/covers/$mangaId/$fileName.256.jpg';
         }
@@ -132,6 +130,15 @@ class MangaDto {
       return 'Unknown';
     }).toList();
 
+    // -------- availableLanguages (tự động filter UI) ----------
+    final availableLanguages =
+        (attrs['availableTranslatedLanguage'] as List<dynamic>? ?? [])
+            .map((e) => e.toString())
+            .where((s) => s.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+
     return MangaDto(
       id: mangaId,
       title: title,
@@ -143,6 +150,7 @@ class MangaDto {
       year: year,
       updatedAt: updatedAt,
       rating: rating,
+      availableLanguages: availableLanguages, // NEW
     );
   }
 
@@ -159,6 +167,7 @@ class MangaDto {
       updatedAt: updatedAt,
       rating: rating,
       isFavorite: isFavorite,
+      availableLanguages: availableLanguages, // NEW
     );
   }
 }

@@ -44,13 +44,18 @@ class CatalogRepositoryImpl implements CatalogRepository {
   Future<List<Chapter>> listChapters({
     required MangaId mangaId,
     required bool ascending,
-    required LanguageCode languageFilter,
+    LanguageCode? languageFilter, // <<< nullable
     required int offset,
     required int limit,
   }) async {
-    final fallbacks = <String>['vi', 'en', 'id', 'es', 'fr', 'pt-br', 'ru', 'de', 'it', 'tr', 'pt'];
+    // fallback ưu tiên phổ biến
+    final fallbacks = <String>[
+      'vi', 'en', 'id', 'es', 'fr', 'pt-br', 'ru', 'de', 'it', 'tr', 'pt'
+    ];
+
+    // Nếu chọn cụ thể -> đưa ngôn ngữ đó lên đầu ưu tiên
     final langs = <String>{
-      languageFilter.value.toLowerCase(),
+      if (languageFilter != null) languageFilter.value.toLowerCase(),
       ...fallbacks,
     }.toList();
 
@@ -64,6 +69,8 @@ class CatalogRepositoryImpl implements CatalogRepository {
 
     return raws.map((r) => _mapChapter(r, parentMangaId: mangaId)).toList();
   }
+
+  // ===================== MAPPERS =====================
 
   Manga _mapMangaSearchItem(dynamic raw) {
     final map = raw as Map<String, dynamic>;
@@ -94,6 +101,14 @@ class CatalogRepositoryImpl implements CatalogRepository {
 
     const double rating = 0.0;
 
+    final availableLanguages =
+        ((attrs['availableTranslatedLanguage'] as List?) ?? const [])
+            .map((e) => e?.toString() ?? '')
+            .where((s) => s.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+
     return Manga(
       id: MangaId(id),
       title: title,
@@ -111,6 +126,7 @@ class CatalogRepositoryImpl implements CatalogRepository {
       isFavorite: false,
       updatedAt: updatedAt,
       rating: rating,
+      availableLanguages: availableLanguages, // <<< required
     );
   }
 
@@ -153,6 +169,14 @@ class CatalogRepositoryImpl implements CatalogRepository {
 
     const double rating = 0.0;
 
+    final availableLanguages =
+        ((attrs['availableTranslatedLanguage'] as List?) ?? const [])
+            .map((e) => e?.toString() ?? '')
+            .where((s) => s.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+
     return Manga(
       id: MangaId(id),
       title: title,
@@ -165,10 +189,10 @@ class CatalogRepositoryImpl implements CatalogRepository {
       isFavorite: false,
       updatedAt: updatedAt,
       rating: rating,
+      availableLanguages: availableLanguages, // <<< required
     );
   }
 
-  // >>> UPDATED: truyền updatedAt cho Chapter
   Chapter _mapChapter(
     Map<String, dynamic> raw, {
     required MangaId parentMangaId,
@@ -182,7 +206,6 @@ class CatalogRepositoryImpl implements CatalogRepository {
         : null;
     final lang = (attrs['translatedLanguage']?.toString());
 
-    // Ưu tiên publishAt -> readableAt -> updatedAt -> createdAt
     final publishAtIso = attrs['publishAt']?.toString();
     final readableAtIso = attrs['readableAt']?.toString();
     final updatedAtIso = attrs['updatedAt']?.toString();
