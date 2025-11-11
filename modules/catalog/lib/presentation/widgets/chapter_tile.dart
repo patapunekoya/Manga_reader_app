@@ -1,7 +1,29 @@
 // modules/catalog/lib/presentation/widgets/chapter_tile.dart
+
 import 'package:flutter/material.dart';
 import '../../domain/entities/chapter.dart';
 
+/// ======================================================================
+/// WIDGET: ChapterTile
+///
+/// Mục đích:
+///   - Hiển thị 1 item chương trong danh sách chapter.
+///   - Cho phép bấm vào để mở reader (qua callback onTap).
+///
+/// Các thành phần UI:
+///   • Title chương: lấy title nếu có, nếu title rỗng → fallback "Ch. <số chương>".
+///   • Icon ⭐ nếu đây là chương gần nhất đã đọc (isRead = true).
+///   • Language code (ví dụ "en", "vi") nếu chapter có trường ngôn ngữ.
+///
+/// Props:
+///   - chapter    : dữ liệu domain Chapter.
+///   - onTap      : callback khi user bấm vào.
+///   - isRead     : đánh dấu chương đặc biệt (ví dụ: chương tiếp tục đọc).
+///
+/// Lưu ý:
+///   - Dùng Material + InkWell để có hiệu ứng ripple.
+///   - Text overflow ellipsis để tránh vỡ layout.
+/// ======================================================================
 class ChapterTile extends StatelessWidget {
   final Chapter chapter;
   final VoidCallback? onTap;
@@ -19,14 +41,16 @@ class ChapterTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.transparent,
+      color: Colors.transparent, // không đổi màu nền khi pressed
       child: InkWell(
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           child: Row(
             children: [
-              // tiêu đề chương
+              // ------------------------------------------------------------
+              // Title chương (ưu tiên title, fallback: "Ch <number>")
+              // ------------------------------------------------------------
               Expanded(
                 child: Text(
                   (chapter.title != null && chapter.title!.trim().isNotEmpty)
@@ -37,13 +61,17 @@ class ChapterTile extends StatelessWidget {
                 ),
               ),
 
-              // icon “đã đọc” (ngôi sao)
+              // ------------------------------------------------------------
+              // Icon ⭐ nếu chương là chương đang đọc gần nhất
+              // ------------------------------------------------------------
               if (isRead) ...[
                 const SizedBox(width: 8),
                 const Icon(Icons.star_rounded, color: Colors.amber, size: 18),
               ],
 
-              // (tuỳ chọn) ngôn ngữ
+              // ------------------------------------------------------------
+              // Hiện ngôn ngữ (nếu có)
+              // ------------------------------------------------------------
               if (chapter.language != null) ...[
                 const SizedBox(width: 8),
                 Text(

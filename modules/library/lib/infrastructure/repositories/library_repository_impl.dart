@@ -5,10 +5,44 @@ import 'package:library_manga/domain/value_objects/favorite_id.dart';
 import 'package:library_manga/domain/value_objects/progress_id.dart';
 import '../datasources/library_local_ds.dart';
 
+/// ============================================================================
+/// LibraryRepositoryImpl
+/// ============================================================================
+/// Vai trò:
+/// - Implement interface `LibraryRepository` cho module Library.
+/// - Là lớp *trung gian domain ↔ data source*: nhận/đưa Entity & VO ra vào.
+/// - Dùng `LibraryLocalDataSource` (Hive) để lưu offline Favorites và Progress.
+///
+/// Thiết kế/Quy ước dữ liệu (local):
+/// - Favorites:
+///     key   : mangaId (String)
+///     value : Map{
+///        "mangaId", "title", "coverImageUrl",
+///        "addedAt", "updatedAt" (millisecondsSinceEpoch)
+///     }
+/// - Progress theo MANGA (không theo page):
+///     key   : mangaId (String)
+///     value : Map{
+///        "mangaId", "mangaTitle", "coverImageUrl",
+///        "lastChapterId", "lastChapterNumber",
+///        "savedAt" (millisecondsSinceEpoch)
+///     }
+///
+/// Lưu ý quan trọng:
+/// - Phải gọi `_local.init()` trong bootstrap trước khi dùng repo này,
+///   nếu không `LibraryLocalDataSource` sẽ quăng lỗi.
+/// - Tất cả sort thời gian dùng DateTime.fromMillisecondsSinceEpoch.
+/// - Ở đây không làm logic phức tạp, chỉ mapping raw Map ↔ Entity/VO.
+/// ============================================================================
 class LibraryRepositoryImpl implements LibraryRepository {
   final LibraryLocalDataSource _local;
   LibraryRepositoryImpl(this._local);
 
+  /// Toggle yêu thích:
+  /// - Nếu đã tồn tại: xoá khỏi favorites.
+  /// - Nếu chưa tồn tại: thêm mới với `addedAt` và `updatedAt` = now.
+  ///
+  /// Dùng epoch milli để nhẹ và ổn định khi sort.
   @override
   Future<void> toggleFavorite({
     required String mangaId,
@@ -30,11 +64,15 @@ class LibraryRepositoryImpl implements LibraryRepository {
     }
   }
 
+  /// Xoá yêu thích theo mangaId (tiện dụng khi cần thao tác trực tiếp).
   @override
   Future<void> removeFavorite(String mangaId) async {
     await _local.deleteFavorite(mangaId);
   }
 
+  /// Lấy danh sách Favorites dưới dạng Entity `FavoriteItem`:
+  /// - Map raw -> Entity + VO `FavoriteId`
+  /// - Sort theo `updatedAt` desc để item vừa “động” lên trước.
   @override
   Future<List<FavoriteItem>> getFavorites() async {
     final rawList = _local.getAllFavoritesRaw();
@@ -58,6 +96,9 @@ class LibraryRepositoryImpl implements LibraryRepository {
     return items;
   }
 
+  /// Lưu tiến trình đọc THEO MANGA (không track page):
+  /// - Ghi đè record theo key = mangaId.
+  /// - Chỉ lưu chương gần nhất (id + number) và thời điểm `savedAt`.
   @override
   Future<void> saveReadProgress({
     required String mangaId,
@@ -77,6 +118,9 @@ class LibraryRepositoryImpl implements LibraryRepository {
     });
   }
 
+  /// Lấy danh sách Continue Reading (đọc dở) để hiển thị strip ở Home:
+  /// - Map raw -> `ReadingProgress` + `ProgressId(mangaId)`
+  /// - Sort theo `savedAt` desc để item vừa đọc lên đầu.
   @override
   Future<List<ReadingProgress>> getContinueReading() async {
     final rawList = _local.getAllProgressRaw();
@@ -103,6 +147,7 @@ class LibraryRepositoryImpl implements LibraryRepository {
     return list;
   }
 
+  /// Lấy 1 progress theo mangaId để nút “Đọc tiếp” chạy đúng chương.
   @override
   Future<ReadingProgress?> getProgressForManga(String mangaId) async {
     final raw = _local.getProgressByMangaId(mangaId);
@@ -125,6 +170,7 @@ class LibraryRepositoryImpl implements LibraryRepository {
     );
   }
 
+  /// Xoá sạch mọi progress. Dùng cho chức năng “Clear history” trong Settings.
   @override
   Future<void> clearAllProgress() async {
     await _local.clearAllProgress();

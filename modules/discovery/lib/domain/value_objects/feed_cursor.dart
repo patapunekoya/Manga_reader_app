@@ -1,20 +1,16 @@
 import 'package:equatable/equatable.dart';
 
-/// FeedCursor: Value Object cho phân trang feed Trending / Latest.
+/// FeedCursor: Value Object dùng cho phân trang Trending / Latest.
+/// MangaDex sử dụng kiểu offset + limit.
 ///
-/// MangaDex dùng offset + limit thay vì "cursor token".
-/// - offset: bắt đầu từ item thứ mấy (0, 10, 20, ...)
-/// - limit: lấy bao nhiêu item / page (10, 20, ...)
+/// offset: bắt đầu từ item thứ mấy (0, 20, 40...)
+/// limit : số lượng item trả về mỗi page
 ///
-/// Vì nó là VO (value object), mình cho vào `domain/value_objects/`
-/// chứ không bỏ chung với entities.
-///
-/// Lưu ý QUAN TRỌNG:
-/// TẤT CẢ nơi nào dùng FeedCursor (DiscoveryRepository,
-/// DiscoveryRepositoryImpl, GetTrending, GetLatestUpdates, HomeBloc)
-/// PHẢI import đúng file này.
-/// Nếu bạn copy class này sang chỗ khác (ví dụ /entities/) sẽ tạo ra 2 kiểu
-/// khác nhau -> override bị lỗi như bạn đang gặp.
+/// Lưu ý:
+/// KHÔNG được duplicate class này ở thư mục khác.
+/// Mọi nơi trong Discovery (repository, impl, usecases, bloc)
+/// phải import đúng VO này, nếu không sẽ lỗi so sánh Equatable
+/// và state không update.
 class FeedCursor extends Equatable {
   final int offset;
   final int limit;
@@ -24,9 +20,7 @@ class FeedCursor extends Equatable {
     required this.limit,
   });
 
-  /// Tạo con trỏ next page.
-  /// Ví dụ: FeedCursor(offset: 0, limit: 10).nextPage()
-  ///  => FeedCursor(offset: 10, limit: 10)
+  /// Tạo con trỏ trang kế tiếp.
   FeedCursor nextPage() {
     return FeedCursor(
       offset: offset + limit,

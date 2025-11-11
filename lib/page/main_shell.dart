@@ -7,11 +7,27 @@ import 'home_shell_page.dart';
 import 'search_shell_page.dart';
 import 'library_shell_page.dart';
 
-/// MainShell: chứa PageView + BottomNav.
-/// - Vuốt trái/phải bình thường giữa 3 tab.
-/// - Khi bấm icon, animate trực tiếp tới tab mục tiêu (duration theo khoảng cách).
-/// - Trang KHÔNG active sẽ render placeholder rỗng để không tốn tài nguyên.
+/// ======================================================================
+/// File: page/main_shell.dart
+/// Mục đích:
+///   - Đóng vai trò “App shell” tầng UI cho 3 tab chính: Home / Search / Library.
+///   - Quản lý chuyển tab bằng PageView + BottomNavigationBar.
+///   - Tối ưu hiệu năng: chỉ render trang đang active (lazy), giữ state bằng keepAlive.
+///
+/// Kiến trúc & Dòng chảy:
+///   - Người dùng vuốt trái/phải hoặc bấm icon bottom nav.
+///   - MainShell điều khiển PageController -> PageView animate/jump đến trang.
+///   - Mỗi trang con được bọc bởi _LazyPage:
+///       • active == true  → dựng widget thật (HomeShellPage / SearchShellPage / LibraryShellPage)
+///       • active == false → trả về SizedBox.expand() (placeholder rỗng, không tốn tài nguyên)
+///
+/// Quy ước:
+///   - Không pre-cache trang lân cận (allowImplicitScrolling=false, cacheExtent mặc định).
+///   - Animation thời gian phụ thuộc khoảng cách tab để cảm giác “hợp lý”.
+///   - Bottom nav là nguồn sự thật cho selectedIndex hiển thị.
+/// ======================================================================
 class MainShell extends StatefulWidget {
+  /// Tab muốn hiển thị khi vào shell (0=Home, 1=Search, 2=Library).
   final int currentIndex;
   const MainShell({super.key, required this.currentIndex});
 
@@ -20,8 +36,10 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
+  // PageController điều khiển PageView
   late final PageController _controller;
-  late int _activeIndex; // tab đang hiển thị
+  // Chỉ số tab đang hiển thị (đồng bộ với PageView.onPageChanged)
+  late int _activeIndex;
 
   @override
   void initState() {
@@ -33,11 +51,16 @@ class _MainShellState extends State<MainShell> {
   @override
   void didUpdateWidget(covariant MainShell oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // Khi parent yêu cầu chuyển tab (ví dụ: điều hướng /home, /search, /library)
+    // và khác tab hiện tại, thực hiện animate.
     if (oldWidget.currentIndex != widget.currentIndex && _activeIndex != widget.currentIndex) {
       _jumpTo(widget.currentIndex);
     }
   }
 
+  /// Chuyển đến tab [index] với animation tùy theo khoảng cách.
+  /// - distance = |index - _activeIndex|
+  /// - ms = max(180, 140 * distance): nhảy xa thì nhanh hơn nhưng vẫn “lướt”.
   Future<void> _jumpTo(int index) async {
     if (index == _activeIndex) return;
     final distance = (index - _activeIndex).abs();
@@ -70,6 +93,7 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // Màu nền thống nhất toàn app
       backgroundColor: AppColors.background,
       body: PageView.builder(
         controller: _controller,
@@ -79,6 +103,7 @@ class _MainShellState extends State<MainShell> {
         padEnds: false,
         // cacheExtent 0 để không pre-cache trang lân cận
         onPageChanged: (i) {
+          // Cập nhật chỉ số active khi user vuốt
           setState(() => _activeIndex = i);
         },
         itemBuilder: (context, index) {
@@ -93,6 +118,7 @@ class _MainShellState extends State<MainShell> {
           }
         },
       ),
+      // Thanh điều hướng đáy: là nguồn event chuyển tab khi người dùng bấm icon
       bottomNavigationBar: _BottomNav(
         currentIndex: _activeIndex,
         onTap: (i) => _jumpTo(i),
@@ -114,6 +140,7 @@ class _LazyPage extends StatefulWidget {
 }
 
 class _LazyPageState extends State<_LazyPage> with AutomaticKeepAliveClientMixin {
+  // Luôn giữ state của trang kể cả khi off-screen
   @override
   bool get wantKeepAlive => true;
 

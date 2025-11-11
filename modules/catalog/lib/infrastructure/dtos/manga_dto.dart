@@ -1,9 +1,37 @@
 // lib/infrastructure/dtos/manga_dto.dart
+
 import '../../domain/entities/manga.dart';
 import '../../domain/value_objects/manga_id.dart';
 
-/// MangaDto: trung gian giữa JSON của MangaDex và Manga entity.
-/// Chứa logic parse JSON và relationships.
+/// ======================================================================
+/// DTO: MangaDto
+///
+/// Mục đích:
+///   - Đại diện dữ liệu JSON từ MangaDex (endpoint /manga).
+///   - Chứa toàn bộ logic parse JSON, relationships, attributes.
+///   - Không được dùng trực tiếp ở UI/BLoC.
+///   - RepositoryImpl sẽ chuyển MangaDto → Manga (Domain Entity).
+///
+/// Vai trò trong kiến trúc:
+///   - Thuộc tầng Infrastructure.
+///   - Tách biệt hoàn toàn Domain Entity khỏi cấu trúc JSON phức tạp.
+///   - Chỉ DTO mới biết JSON của MangaDex.
+///   - Domain chỉ nhận dữ liệu sạch (title, tags, coverUrl…).
+///
+/// Các nguồn JSON được dùng:
+///   - `attributes`        : title, description, status, year, updatedAt…
+///   - `relationships`     : cover_art, author
+///   - `attributes.tags[]` : danh sách thể loại (mỗi tag cũng chứa name map)
+///   - `availableTranslatedLanguage`: danh sách ngôn ngữ có chapter.
+///
+/// Lưu ý:
+///   - Year có thể là int hoặc string → cần parse an toàn.
+///   - Tiêu đề & mô tả là map đa ngôn ngữ, ưu tiên "en".
+///   - Cover art cần ghép URL thủ công.
+///   - Rating hiện chưa parse từ /statistics (để mở rộng sau).
+///   - availableLanguages dùng cho UI filter chapter theo ngôn ngữ.
+///
+/// ======================================================================
 class MangaDto {
   final String id;
   final String title;
@@ -17,10 +45,10 @@ class MangaDto {
   /// Thời điểm cập nhật gần nhất (nếu MangaDex trả về)
   final DateTime? updatedAt;
 
-  /// Điểm rating (nếu sau này lấy từ statistics)
+  /// Điểm rating (sẽ dùng nếu fetch từ /statistics sau này)
   final double? rating;
 
-  /// NEW: danh sách ngôn ngữ thực sự có chapter
+  /// Danh sách ngôn ngữ thực sự có chapter
   final List<String> availableLanguages;
 
   MangaDto({
@@ -34,10 +62,27 @@ class MangaDto {
     required this.year,
     required this.updatedAt,
     required this.rating,
-    required this.availableLanguages, // NEW
+    required this.availableLanguages,
   });
 
-  /// parse từ json /manga item (có relationships)
+  /// ======================================================================
+  /// Parse JSON từ MangaDex → MangaDto
+  ///
+  /// JSON mẫu:
+  /// {
+  ///   "id": "...",
+  ///   "attributes": { "title": {...}, "description": {...}, ... },
+  ///   "relationships": [
+  ///       { "type": "author", "attributes": {...} },
+  ///       { "type": "cover_art", "attributes": {"fileName": "..."} }
+  ///   ]
+  /// }
+  ///
+  /// Ghi chú:
+  ///   - pickTitle() & pickDesc() chọn ngôn ngữ ưu tiên (en).
+  ///   - coverImageUrl tự build 256px theo chuẩn MangaDex.
+  ///   - availableLanguages đọc từ attributes.availableTranslatedLanguage.
+  /// ======================================================================
   factory MangaDto.fromMangaDexJson(Map<String, dynamic> json) {
     final mangaId = json['id']?.toString() ?? '';
 
@@ -71,11 +116,8 @@ class MangaDto {
     int? year;
     if (attrs['year'] != null) {
       final y = attrs['year'];
-      if (y is int) {
-        year = y;
-      } else if (y is String) {
-        year = int.tryParse(y);
-      }
+      if (y is int) year = y;
+      else if (y is String) year = int.tryParse(y);
     }
 
     // -------- updatedAt ----------
@@ -89,10 +131,10 @@ class MangaDto {
       }
     }
 
-    // -------- rating ----------
+    // -------- rating (tùy chọn tương lai) ----------
     double? rating;
 
-    // -------- authorName từ relationships ----------
+    // -------- authorName ----------
     String? authorName;
     for (final rel in rels) {
       if (rel['type'] == 'author') {
@@ -105,13 +147,14 @@ class MangaDto {
       }
     }
 
-    // -------- cover url từ relationships ----------
+    // -------- cover URL ----------
     String? coverImageUrl;
     for (final rel in rels) {
       if (rel['type'] == 'cover_art') {
         final coverAttrs = (rel['attributes'] as Map<String, dynamic>? ?? {});
         final fileName = coverAttrs['fileName']?.toString();
         if (fileName != null && fileName.isNotEmpty) {
+          // Dùng ảnh 256px để tối ưu grid/list
           coverImageUrl =
               'https://uploads.mangadex.org/covers/$mangaId/$fileName.256.jpg';
         }
@@ -130,12 +173,12 @@ class MangaDto {
       return 'Unknown';
     }).toList();
 
-    // -------- availableLanguages (tự động filter UI) ----------
+    // -------- availableLanguages ----------
     final availableLanguages =
         (attrs['availableTranslatedLanguage'] as List<dynamic>? ?? [])
             .map((e) => e.toString())
             .where((s) => s.isNotEmpty)
-            .toSet()
+            .toSet() // loại trùng
             .toList()
           ..sort();
 
@@ -150,10 +193,17 @@ class MangaDto {
       year: year,
       updatedAt: updatedAt,
       rating: rating,
-      availableLanguages: availableLanguages, // NEW
+      availableLanguages: availableLanguages,
     );
   }
 
+  /// ======================================================================
+  /// Mapping DTO → Domain Entity
+  ///
+  /// Domain Entity (Manga):
+  ///   - Bao gồm logic sạch, không phụ thuộc JSON.
+  ///   - isFavorite được RepositoryImpl bổ sung khi đọc Hive.
+  /// ======================================================================
   Manga toDomain({bool isFavorite = false}) {
     return Manga(
       id: MangaId(id),
@@ -167,7 +217,7 @@ class MangaDto {
       updatedAt: updatedAt,
       rating: rating,
       isFavorite: isFavorite,
-      availableLanguages: availableLanguages, // NEW
+      availableLanguages: availableLanguages,
     );
   }
 }

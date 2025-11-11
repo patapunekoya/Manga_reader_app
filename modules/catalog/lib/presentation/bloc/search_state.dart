@@ -1,5 +1,29 @@
 part of 'search_bloc.dart';
 
+/// ======================================================================
+/// STATE: SearchState
+///
+/// Vai trò:
+///   - Đại diện toàn bộ trạng thái của màn hình Tìm kiếm.
+///   - Được phát ra (emit) bởi SearchBloc để UI rebuild phù hợp.
+///
+/// Thành phần chính:
+///   • status       : vòng đời tải dữ liệu (initial/loading/success/failure/loadingMore)
+///   • query        : chuỗi người dùng đang tìm
+///   • genre        : thể loại đang lọc (null = không lọc)
+///   • items        : danh sách kết quả Manga hiện có
+///   • hasMore      : còn trang tiếp theo để loadMore hay không
+///   • offset       : đã tải bao nhiêu item (phục vụ phân trang)
+///   • errorMessage : thông báo lỗi gần nhất (nếu có)
+///
+/// Quy ước:
+///   - `initial()` dùng khi chưa có tương tác nào.
+///   - Mọi thay đổi dùng `copyWith()` để giữ tính bất biến.
+///   - `copyWith()` có cờ `setGenreNull` để phân biệt
+///       + setGenreNull = true  → ép genre = null
+///       + setGenreNull = false → giữ nguyên hoặc set bằng tham số `genre`
+/// ======================================================================
+
 enum SearchStatus {
   initial,
   loading,
@@ -9,24 +33,25 @@ enum SearchStatus {
 }
 
 class SearchState extends Equatable {
+  /// Vòng đời trạng thái tải dữ liệu tìm kiếm
   final SearchStatus status;
 
-  // text user đang search
+  /// Chuỗi tìm kiếm hiện tại (có thể rỗng nếu chỉ lọc theo thể loại)
   final String query;
 
-  // thể loại hiện tại (null = không lọc)
+  /// Thể loại đang chọn; null = không lọc (All)
   final String? genre;
 
-  // danh sách kết quả hiện có
+  /// Danh sách kết quả manga đã fetch về
   final List<Manga> items;
 
-  // còn trang tiếp theo không
+  /// Cờ cho biết còn dữ liệu để load thêm hay không
   final bool hasMore;
 
-  // offset hiện tại (đã load bao nhiêu)
+  /// Offset hiện tại, biểu thị đã tải bao nhiêu item
   final int offset;
 
-  // lỗi gần nhất (nếu có)
+  /// Thông báo lỗi gần nhất (hiển thị nhẹ nhàng trên UI nếu cần)
   final String? errorMessage;
 
   const SearchState({
@@ -39,6 +64,7 @@ class SearchState extends Equatable {
     required this.errorMessage,
   });
 
+  /// Trạng thái khởi tạo: chưa có kết quả, chưa có query/genre.
   const SearchState.initial()
       : status = SearchStatus.initial,
         query = '',
@@ -48,6 +74,10 @@ class SearchState extends Equatable {
         offset = 0,
         errorMessage = null;
 
+  /// Sao chép state với các thay đổi cần thiết.
+  /// Lưu ý xử lý riêng cho `genre`:
+  ///   - truyền `setGenreNull: true` để ép genre = null
+  ///   - nếu không, `genre` sẽ giữ nguyên khi đối số `genre` là null
   SearchState copyWith({
     SearchStatus? status,
     String? query,

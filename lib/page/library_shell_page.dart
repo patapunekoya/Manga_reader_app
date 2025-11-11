@@ -17,6 +17,31 @@ import 'package:library_manga/presentation/widgets/history_list.dart';
 import 'package:library_manga/application/usecases/toggle_favorite.dart';
 import 'package:library_manga/domain/entities/favorite_item.dart';
 
+/// ======================================================================
+/// File: page/library_shell_page.dart
+/// Mục đích:
+///   - “Shell page” cho tab Thư viện: quản lý 2 khối dữ liệu cục bộ (Hive):
+///       • Yêu thích (Favorites)   → FavoritesBloc
+///       • Lịch sử đọc (History)   → HistoryBloc
+///   - Render giao diện 2 section bằng CustomScrollView + SliverToBoxAdapter:
+///       • Grid Yêu thích (không tự cuộn)
+///       • Danh sách Lịch sử (không tự cuộn)
+///   - Điều hướng:
+///       • Tới Manga Detail khi chạm vào item yêu thích
+///       • Tới Reader khi resume từ lịch sử
+///
+/// Dòng chảy dữ liệu:
+///   UI -> (FavoritesLoadRequested | HistoryLoadRequested)
+///     -> {FavoritesBloc | HistoryBloc} -> đọc Hive qua repository
+///     -> phát state cho FavoriteGrid / HistoryList hiển thị.
+///
+/// Lưu ý:
+///   - Lấy bloc qua GetIt trong initState, nhớ close() trong dispose.
+///   - Xóa yêu thích có confirm; gọi ToggleFavorite use case rồi reload danh sách.
+///   - “Xóa tất cả” lịch sử có confirm; bắn HistoryClearAllRequested.
+///   - Các widget con (FavoriteGrid/HistoryList) không tự cuộn để tránh xung đột
+///     với CustomScrollView bên ngoài.
+/// ======================================================================
 class LibraryShellPage extends StatefulWidget {
   const LibraryShellPage({super.key});
 
@@ -25,6 +50,7 @@ class LibraryShellPage extends StatefulWidget {
 }
 
 class _LibraryShellPageState extends State<LibraryShellPage> {
+  // Hai bloc tách biệt cho Favorites và History (đồng bộ hóa độc lập)
   late final FavoritesBloc _favoritesBloc;
   late final HistoryBloc _historyBloc;
 
@@ -33,17 +59,21 @@ class _LibraryShellPageState extends State<LibraryShellPage> {
     super.initState();
     final sl = GetIt.instance;
 
+    // Khởi động: nạp dữ liệu cho cả hai khối
     _favoritesBloc = sl<FavoritesBloc>()..add(const FavoritesLoadRequested());
     _historyBloc = sl<HistoryBloc>()..add(const HistoryLoadRequested());
   }
 
   @override
   void dispose() {
+    // Giải phóng tài nguyên stream/subscription
     _favoritesBloc.close();
     _historyBloc.close();
     super.dispose();
   }
 
+  /// Điều hướng mở Reader với ngữ cảnh tối thiểu:
+  /// - URL schema: /reader/:chapterId?mangaId=...&page=...
   void _openReader({
     required String mangaId,
     required String chapterId,
@@ -52,10 +82,17 @@ class _LibraryShellPageState extends State<LibraryShellPage> {
     context.push("/reader/$chapterId?mangaId=$mangaId&page=$pageIndex");
   }
 
+  /// Điều hướng mở trang chi tiết Manga:
+  /// - URL schema: /manga/:mangaId
   void _openMangaDetail(String mangaId) {
     context.push("/manga/$mangaId");
   }
 
+  /// Xác nhận và gỡ 1 mục khỏi danh sách yêu thích.
+  /// Quy trình:
+  ///   1) Hỏi xác nhận bằng AlertDialog.
+  ///   2) Nếu đồng ý: gọi UseCase ToggleFavorite để đảo trạng thái.
+  ///   3) Reload FavoritesBloc và báo SnackBar.
   Future<void> _confirmAndRemoveFavorite(FavoriteItem item) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -84,6 +121,8 @@ class _LibraryShellPageState extends State<LibraryShellPage> {
     );
   }
 
+  /// Xác nhận và xóa toàn bộ lịch sử đọc.
+  /// - Bắn sự kiện HistoryClearAllRequested vào HistoryBloc nếu người dùng đồng ý.
   Future<void> _confirmAndClearHistory() async {
     final ok = await showDialog<bool>(
       context: context,
@@ -107,9 +146,10 @@ class _LibraryShellPageState extends State<LibraryShellPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // Dùng màu nền thống nhất từ bảng màu dùng chung
       backgroundColor: AppColors.background,
       body: SafeArea(
-        bottom: false,
+        bottom: false, // tránh đẩy nội dung lên khi có gesture/bottom bar
         child: CustomScrollView(
           slivers: [
             // ====== HEADER: YÊU THÍCH ======
@@ -141,13 +181,12 @@ class _LibraryShellPageState extends State<LibraryShellPage> {
             // ====== GRID YÊU THÍCH (không tự cuộn) ======
             SliverToBoxAdapter(
               child: BlocProvider.value(
-                value: _favoritesBloc,
+                value: _favoritesBloc, // cung cấp bloc hiện hữu cho subtree
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: FavoriteGrid(
-                    onTapManga: _openMangaDetail,
-                    // NHẤN-GIỮ để gỡ
-                    onLongPressManga: _confirmAndRemoveFavorite,
+                    onTapManga: _openMangaDetail,      // chạm → mở chi tiết
+                    onLongPressManga: _confirmAndRemoveFavorite, // nhấn giữ → gỡ yêu thích
                   ),
                 ),
               ),
@@ -191,7 +230,7 @@ class _LibraryShellPageState extends State<LibraryShellPage> {
               child: BlocProvider.value(
                 value: _historyBloc,
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 80), // chừa đáy cho bottom nav
                   child: HistoryList(
                     onResumeReading: ({
                       required String mangaId,

@@ -1,21 +1,36 @@
 import 'package:flutter/material.dart';
 import '../../domain/entities/home_section.dart';
 
-/// Widget hiển thị danh sách đề xuất (trending / latest)
-/// KHÔNG còn tự đọc HomeBloc trực tiếp.
-/// Cha (HomeShellPage) sẽ đưa data xuống.
-/// -> Giảm lỗi type mismatch với HomeBloc/HomeState.
+/// ---------------------------------------------------------------------------
+/// TrendingSectionList
+/// ---------------------------------------------------------------------------
+/// Widget hiển thị danh sách đề xuất (ví dụ Trending hoặc Latest Updates).
+///
+/// ĐIỂM QUAN TRỌNG:
+/// - Widget này KHÔNG tự gọi HomeBloc.
+/// - HomeShellPage sẽ fetch data từ HomeBloc và truyền xuống props:
+///     items       → danh sách DiscoveryFeedItemVM
+///     isLoading   → cho biết đang tải
+///     isError     → cho biết có lỗi
+/// - Mục tiêu: giảm coupling, tránh type mismatch HomeState.
+///
+/// UI:
+/// - Loading     → CircularProgressIndicator
+/// - Error       → Text lỗi
+/// - Empty       → SizedBox.shrink()
+/// - Success     → ListView hiển thị từng row manga
+/// ---------------------------------------------------------------------------
 class TrendingSectionList extends StatelessWidget {
-  /// danh sách item discovery (đã map thành DiscoveryFeedItemVM)
+  /// Danh sách item discovery (đã map thành DiscoveryFeedItemVM ở domain)
   final List<DiscoveryFeedItemVM> items;
 
-  /// trạng thái loading
+  /// True nếu đang tải dữ liệu (loading state)
   final bool isLoading;
 
-  /// trạng thái lỗi
+  /// True nếu HomeBloc trả lỗi (failure state)
   final bool isError;
 
-  /// callback khi bấm vào 1 manga
+  /// Callback khi user nhấn vào 1 manga → truyền id ra ngoài
   final void Function(String mangaId) onTapManga;
 
   const TrendingSectionList({
@@ -28,17 +43,19 @@ class TrendingSectionList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 1. loading
+    // -------------------------------------------------------------------------
+    // 1. Loading
+    // -------------------------------------------------------------------------
     if (isLoading) {
       return const Padding(
         padding: EdgeInsets.all(16),
-        child: Center(
-          child: CircularProgressIndicator(),
-        ),
+        child: Center(child: CircularProgressIndicator()),
       );
     }
 
-    // 2. error
+    // -------------------------------------------------------------------------
+    // 2. Lỗi khi load
+    // -------------------------------------------------------------------------
     if (isError) {
       return const Padding(
         padding: EdgeInsets.all(16),
@@ -49,12 +66,19 @@ class TrendingSectionList extends StatelessWidget {
       );
     }
 
-    // 3. empty
+    // -------------------------------------------------------------------------
+    // 3. Không có dữ liệu
+    // -------------------------------------------------------------------------
     if (items.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    // 4. list data
+    // -------------------------------------------------------------------------
+    // 4. Render danh sách data
+    // ListView.separated → scroll vertical
+    // shrinkWrap:true    → không chiếm full height của parent ListView
+    // physics NeverScrollable → để page chính scroll, không phải list này
+    // -------------------------------------------------------------------------
     return ListView.separated(
       padding: const EdgeInsets.all(16),
       shrinkWrap: true,
@@ -72,6 +96,16 @@ class TrendingSectionList extends StatelessWidget {
   }
 }
 
+/// ---------------------------------------------------------------------------
+/// _TrendingRow
+/// ---------------------------------------------------------------------------
+/// Widget row hiển thị:
+/// - cover nhỏ bên trái
+/// - title + subtitle bên phải
+/// - icon chevron cuối dòng
+///
+/// Dùng trong TrendingSectionList.
+/// ---------------------------------------------------------------------------
 class _TrendingRow extends StatelessWidget {
   final DiscoveryFeedItemVM item;
   final VoidCallback onTap;
@@ -90,7 +124,9 @@ class _TrendingRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // cover ảnh nhỏ bên trái
+          // -------------------------------------------------------------------
+          // Cover bên trái
+          // -------------------------------------------------------------------
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: SizedBox(
@@ -114,7 +150,9 @@ class _TrendingRow extends StatelessWidget {
 
           const SizedBox(width: 12),
 
-          // text info
+          // -------------------------------------------------------------------
+          // Info text: title + subtitle
+          // -------------------------------------------------------------------
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -130,9 +168,10 @@ class _TrendingRow extends StatelessWidget {
                     height: 1.2,
                   ),
                 ),
+
                 const SizedBox(height: 4),
 
-                // subtitle (ví dụ "Ch.123 • 2h")
+                // subtitle ví dụ: "Ch.123 • 2h"
                 if (item.subLabel != null)
                   Text(
                     item.subLabel!,
@@ -146,6 +185,9 @@ class _TrendingRow extends StatelessWidget {
             ),
           ),
 
+          // -------------------------------------------------------------------
+          // Icon mũi tên cuối dòng
+          // -------------------------------------------------------------------
           const Icon(
             Icons.chevron_right,
             color: Colors.white38,

@@ -1,8 +1,31 @@
+// -----------------------------------------------------------------------------
+// ContinueReadingStrip
+// -----------------------------------------------------------------------------
+// Widget hiển thị danh sách các truyện "Đọc tiếp" (continue reading).
+//
+// Data lấy từ HomeVM.continueReading → mỗi item chứa:
+//   - mangaId
+//   - mangaTitle
+//   - chapterId (chương đang đọc dở)
+//   - chapterNumber
+//   - pageIndex (luôn 0 trong hệ thống mới, để tương thích API cũ)
+//   - coverImageUrl
+//
+// Layout:
+//   - Dạng horizontal ListView
+//   - Mỗi truyện là 1 card nhỏ, bo góc, có ảnh + tiêu đề + dòng số chương
+//
+// onTapContinue:
+//   Callback khi người dùng bấm vào card → mở đúng chapter dở dang.
+// -----------------------------------------------------------------------------
+
 import 'package:flutter/material.dart';
 import 'package:home/domain/entities/home_vm.dart';
 
 class ContinueReadingStrip extends StatelessWidget {
   final List<ContinueReadingItemVM> items;
+
+  // Callback khi user nhấn vào 1 item để đọc tiếp chương đang dang dở
   final void Function({
     required String mangaId,
     required String chapterId,
@@ -17,11 +40,12 @@ class ContinueReadingStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Nếu không có item nào → ẩn luôn
     if (items.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    // Tăng nhẹ chiều cao để dư địa cho text; ảnh sẽ co giãn theo Expanded
+    // ListView ngang cao ~210px để hình + text không bị chật
     return SizedBox(
       height: 210,
       child: ListView.separated(
@@ -35,6 +59,7 @@ class ContinueReadingStrip extends StatelessWidget {
           return _ContinueCard(
             item: item,
             onTap: () {
+              // Điều hướng màn reader
               onTapContinue(
                 mangaId: item.mangaId,
                 chapterId: item.chapterId,
@@ -48,6 +73,16 @@ class ContinueReadingStrip extends StatelessWidget {
   }
 }
 
+// -----------------------------------------------------------------------------
+// _ContinueCard
+// -----------------------------------------------------------------------------
+// Card nhỏ hiển thị từng item "Đọc tiếp":
+//   - Ảnh cover (chiếm phần lớn diện tích)
+//   - Tên manga (1 dòng)
+//   - "Chap X • Trang Y"
+//
+// Có xử lý text scale (accessibility) để tránh vỡ layout khi user tăng font.
+// -----------------------------------------------------------------------------
 class _ContinueCard extends StatelessWidget {
   final ContinueReadingItemVM item;
   final VoidCallback onTap;
@@ -59,7 +94,7 @@ class _ContinueCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Nếu người dùng bật text scale quá lớn, clamp lại để tránh tràn
+    // Clamp text scale để UI không vỡ khi người dùng bật accessibility quá lớn
     final media = MediaQuery.of(context);
     final clamped = media.textScaler.clamp(maxScaleFactor: 1.2);
 
@@ -72,11 +107,14 @@ class _ContinueCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Ảnh chiếm phần còn lại -> không tràn
+              // -----------------------------------------------------------------
+              // Cover image (Expanded để chiếm hết phần vertical còn lại)
+              // -----------------------------------------------------------------
               Expanded(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: item.coverImageUrl != null && item.coverImageUrl!.isNotEmpty
+                  child: item.coverImageUrl != null &&
+                          item.coverImageUrl!.isNotEmpty
                       ? Image.network(
                           item.coverImageUrl!,
                           fit: BoxFit.cover,
@@ -103,7 +141,9 @@ class _ContinueCard extends StatelessWidget {
 
               const SizedBox(height: 8),
 
-              // Tiêu đề: tối đa 1 dòng
+              // -----------------------------------------------------------------
+              // Tên manga: tối đa 1 dòng
+              // -----------------------------------------------------------------
               Text(
                 item.mangaTitle,
                 maxLines: 1,
@@ -117,7 +157,9 @@ class _ContinueCard extends StatelessWidget {
 
               const SizedBox(height: 2),
 
-              // Dòng phụ: 1 dòng
+              // -----------------------------------------------------------------
+              // Dòng phụ: "Chap X • Trang Y"
+              // -----------------------------------------------------------------
               Text(
                 "Chap ${item.chapterNumber} • Trang ${item.pageIndex + 1}",
                 maxLines: 1,

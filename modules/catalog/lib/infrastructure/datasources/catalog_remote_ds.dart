@@ -3,17 +3,43 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'mangadex_tags.dart';
 
-/// CatalogRemoteDataSource:
-/// - /manga: search
-/// - /manga/{id}?includes[]=author,cover_art: detail
-/// - /manga/{id}/feed: danh sách chapter (ổn định hơn /chapter?manga=)
+/// ======================================================================
+/// DataSource (Remote): CatalogRemoteDataSource
 ///
-/// Trả JSON raw, Repository lo mapping.
+/// Mục đích:
+///   - Là lớp làm việc trực tiếp với API MangaDex qua Dio.
+///   - Chỉ trả về JSON raw (Map/List) để RepositoryImpl chịu trách nhiệm mapping
+///     sang Entity (Manga, Chapter, …).
+///
+/// Endpoints chính dùng:
+///   - /manga                                → search
+///   - /manga/{id}?includes[]=author,cover_art → detail
+///   - /manga/{id}/feed                      → danh sách chapter (ổn định hơn /chapter?manga=)
+///
+/// Quy ước:
+///   - Không throw custom domain error ở đây; để nguyên Dio error cho layer trên xử lý.
+///   - Luôn phòng thủ kiểu dữ liệu trước khi cast (Map/List).
+///   - Có helper `_getWithRetry` để retry nhẹ với lỗi mạng tạm thời.
+///   - Tag filter: map tên thể loại → tag id qua `kMangaDexTagIds`.
+///
+/// Lưu ý sorting chapter feed:
+///   - Ưu tiên `readableAt` (thời điểm đọc được), fallback theo `chapter` numeric.
+///   - Có 2 biến thể:
+///       • listChaptersRawWithFallback: nhiều ngôn ngữ, chọn “bản tốt nhất” theo thứ tự ưu tiên.
+///       • listChaptersRaw: 1 ngôn ngữ hoặc tất cả.
+/// ======================================================================
 class CatalogRemoteDataSource {
   final Dio _dio;
   CatalogRemoteDataSource(this._dio);
 
   // --------------------------- SEARCH ---------------------------
+  /// Tìm kiếm manga.
+  /// Params:
+  ///   - query : chuỗi tìm kiếm (có thể rỗng)
+  ///   - genre : tên thể loại (nullable). Sẽ map sang tagId nếu có.
+  ///   - offset/limit: phân trang.
+  /// Trả về:
+  ///   - Danh sách item JSON (dynamic) từ key `data` của MangaDex.
   Future<List<dynamic>> searchMangaRaw({
     required String query,
     String? genre,
@@ -45,6 +71,9 @@ class CatalogRemoteDataSource {
   }
 
   // --------------------------- DETAIL ---------------------------
+  /// Lấy chi tiết manga bao gồm author và cover_art qua includes[].
+  /// Trả về:
+  ///   - Map JSON của 1 manga (`data`), hoặc null nếu không đúng cấu trúc.
   Future<Map<String, dynamic>?> getMangaDetailRaw({
     required String mangaId,
   }) async {
@@ -62,8 +91,16 @@ class CatalogRemoteDataSource {
   }
 
   // --------------------------- FEED: đa ngôn ngữ + fallback ---------------------------
-  /// Lấy chapter theo nhiều ngôn ngữ ưu tiên (ví dụ: ['en','vi','id']),
-  /// sau đó lọc giữ lại 1 ngôn ngữ tốt nhất cho mỗi chapterNumber theo thứ tự ưu tiên.
+  /// Lấy chapter theo nhiều ngôn ngữ ưu tiên (ví dụ: ['en','vi','id']).
+  /// Chiến lược:
+  ///   - Gọi feed 1 lần với translatedLanguage[]=... (đa ngôn ngữ).
+  ///   - Nhóm theo `chapterNumber` (attributes.chapter).
+  ///   - Với mỗi nhóm, chọn 1 bản “tốt nhất” dựa theo thứ tự ưu tiên ngôn ngữ.
+  ///   - Sort kết quả cuối theo readableAt (hoặc chapter number nếu thiếu).
+  ///
+  /// Ghi chú:
+  ///   - `contentRating[]` giữ 3 mức để không bị thiếu kết quả phổ biến.
+  ///   - `includeFuturePublishAt=0` và `includeEmptyPages=0` để lọc noise.
   Future<List<Map<String, dynamic>>> listChaptersRawWithFallback({
     required String mangaId,
     required bool ascending,
@@ -115,6 +152,7 @@ class CatalogRemoteDataSource {
       if (newPri < curPri) bestByChapterNo[key] = m;
     }
 
+    // Sắp xếp kết quả cuối
     final result = bestByChapterNo.values.toList();
     result.sort((a, b) {
       final aAttrs = (a['attributes'] as Map?) ?? const {};
@@ -125,6 +163,7 @@ class CatalogRemoteDataSource {
       if (aReadable != null && bReadable != null) {
         cmp = aReadable.compareTo(bReadable);
       } else {
+        // Fallback theo chapter number dạng số nếu thiếu readableAt
         double n(String? s) => double.tryParse((s ?? '').toString()) ?? double.nan;
         final aNum = n(aAttrs['chapter']);
         final bNum = n(bAttrs['chapter']);
@@ -140,7 +179,9 @@ class CatalogRemoteDataSource {
   }
 
   // --------------------------- FEED: 1 ngôn ngữ hoặc ALL ---------------------------
-  /// Nếu [language] == null => lấy tất cả ngôn ngữ. Nếu không, chỉ 1 ngôn ngữ.
+  /// Lấy feed theo 1 ngôn ngữ hoặc tất cả nếu [language] == null.
+  /// - Nếu language != null → translatedLanguage[]=<language>
+  /// - Nếu null → không truyền translatedLanguage → trả tất cả
   Future<List<Map<String, dynamic>>> listChaptersRaw({
     required String mangaId,
     required bool ascending,
@@ -174,11 +215,16 @@ class CatalogRemoteDataSource {
   }
 
   // --------------------------- Helpers ---------------------------
+  /// Thứ tự ưu tiên ngôn ngữ: càng nhỏ càng ưu tiên.
   int _langPriority(String lang, List<String> pref) {
     final idx = pref.indexOf(lang);
     return idx >= 0 ? idx : 999;
   }
 
+  /// Helper retry đơn giản cho GET:
+  /// - [maxRetry] số lần thử lại (mặc định 2).
+  /// - [delay] thời gian chờ giữa các lần thử.
+  /// - Throw lỗi cuối cùng nếu hết retry.
   Future<Response<dynamic>?> _getWithRetry(
     Future<Response<dynamic>> Function() call, {
     int maxRetry = 2,
@@ -203,7 +249,13 @@ class CatalogRemoteDataSource {
   }
 }
 
-// Build URL cover
+/// ======================================================================
+/// Utility: buildCoverUrl
+/// - Dựng URL ảnh cover theo kích thước:
+///     • size = 256 hoặc 512 → thêm đuôi .{size}.jpg
+///     • size khác          → trả file gốc (không thêm đuôi)
+/// - Thường dùng để hiện thumbnail ở list/grid.
+/// ======================================================================
 String buildCoverUrl(String mangaId, String fileName, {int size = 256}) {
   if (size == 256 || size == 512) {
     return 'https://uploads.mangadex.org/covers/$mangaId/$fileName.$size.jpg';

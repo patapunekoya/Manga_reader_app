@@ -16,6 +16,38 @@ import 'package:library_manga/application/usecases/toggle_favorite.dart';
 part 'manga_detail_event.dart';
 part 'manga_detail_state.dart';
 
+/// ======================================================================
+/// BLoC: MangaDetailBloc
+///
+/// Mục đích:
+///   - Điều phối luồng dữ liệu màn *Manga Detail*: tải chi tiết manga,
+///     phân trang danh sách chương, đổi thứ tự sort, lọc theo ngôn ngữ,
+///     và toggle trạng thái yêu thích.
+///   - Kết nối các UseCase tầng Application với UI thông qua State.
+///
+/// Phụ thuộc (DI):
+///   - GetMangaDetail     : lấy entity Manga theo MangaId.
+///   - ListChapters       : lấy danh sách Chapter theo sort/language/offset/limit.
+///   - GetFavorites       : lấy danh sách yêu thích (từ module library_manga).
+///   - ToggleFavorite     : thêm/bớt một manga vào danh sách yêu thích.
+///
+/// Các event hỗ trợ (định nghĩa trong phần part):
+///   - MangaDetailLoadRequested
+///   - MangaDetailToggleSort
+///   - MangaDetailLoadMoreChapters
+///   - MangaDetailFavoriteToggled
+///   - MangaDetailRefreshFavorite
+///   - MangaDetailSelectLanguage
+///
+/// State chính (định nghĩa trong phần part):
+///   - MangaDetailState: giữ manga, chapters, status, selectedLanguage,
+///     chapterOffset, hasMoreChapters, availableLanguages, errorMessage…
+///
+/// Quy ước:
+///   - pageSize = 50: kích thước trang khi tải chapter.
+///   - selectedLanguage == null → All languages (repo áp dụng fallback).
+///   - availableLanguages: lấy từ danh sách Chapter hiện có để UI filter.
+/// ======================================================================
 class MangaDetailBloc extends Bloc<MangaDetailEvent, MangaDetailState> {
   final GetMangaDetail _getMangaDetail;
   final ListChapters _listChapters;
@@ -36,6 +68,7 @@ class MangaDetailBloc extends Bloc<MangaDetailEvent, MangaDetailState> {
         _getFavorites = getFavorites,
         _toggleFavorite = toggleFavorite,
         super(const MangaDetailState.initial()) {
+    // Đăng ký handler cho từng event
     on<MangaDetailLoadRequested>(_onLoadRequested);
     on<MangaDetailToggleSort>(_onToggleSort);
     on<MangaDetailLoadMoreChapters>(_onLoadMoreChapters);
@@ -44,7 +77,8 @@ class MangaDetailBloc extends Bloc<MangaDetailEvent, MangaDetailState> {
     on<MangaDetailSelectLanguage>(_onSelectLanguage);
   }
 
-  // Rút danh sách ngôn ngữ từ list chapter
+  /// Trích danh sách ngôn ngữ có mặt trong [chapters] để hiển thị filter.
+  /// - Loại trùng bằng Set, sort để UI ổn định.
   List<String> _extractLanguages(List<Chapter> chapters) {
     final set = <String>{};
     for (final c in chapters) {
@@ -55,6 +89,13 @@ class MangaDetailBloc extends Bloc<MangaDetailEvent, MangaDetailState> {
     return list;
   }
 
+  /// Event: tải màn chi tiết lần đầu
+  /// Bước:
+  ///   1) emit loading + reset paging/filter
+  ///   2) gọi UseCase get detail
+  ///   3) đọc favorites để gán isFavorite
+  ///   4) load chapter trang đầu theo selectedLanguage hiện tại (mặc định All)
+  ///   5) trích availableLanguages từ chapters
   Future<void> _onLoadRequested(
     MangaDetailLoadRequested event,
     Emitter<MangaDetailState> emit,
@@ -83,12 +124,13 @@ class MangaDetailBloc extends Bloc<MangaDetailEvent, MangaDetailState> {
       final chapters = await _listChapters(
         mangaId: MangaId(event.mangaId),
         ascending: state.ascending,
-        // NOTE: ListChapters nên nhận LanguageCode? (nullable). Nếu chưa, sửa usecase.
+        // NOTE: ListChapters nhận LanguageCode? (nullable) → null = All
         languageFilter: selectedLang == null ? null : LanguageCode(selectedLang),
         offset: 0,
         limit: pageSize,
       );
 
+      // 4) trích danh sách ngôn ngữ từ chapters
       final langs = _extractLanguages(chapters);
 
       emit(state.copyWith(
@@ -108,6 +150,9 @@ class MangaDetailBloc extends Bloc<MangaDetailEvent, MangaDetailState> {
     }
   }
 
+  /// Event: đổi thứ tự sort (asc/desc)
+  /// - Reset paging về đầu, giữ filter ngôn ngữ hiện tại.
+  /// - Gọi lại ListChapters với ascending đã lật.
   Future<void> _onToggleSort(
     MangaDetailToggleSort event,
     Emitter<MangaDetailState> emit,
@@ -147,6 +192,9 @@ class MangaDetailBloc extends Bloc<MangaDetailEvent, MangaDetailState> {
     }
   }
 
+  /// Event: load thêm chương (phân trang)
+  /// - Bỏ qua nếu đang loadMore hoặc không còn trang.
+  /// - Ghép `more` vào `state.chapters` rồi cập nhật offset/hasMore.
   Future<void> _onLoadMoreChapters(
     MangaDetailLoadMoreChapters event,
     Emitter<MangaDetailState> emit,
@@ -187,6 +235,9 @@ class MangaDetailBloc extends Bloc<MangaDetailEvent, MangaDetailState> {
     }
   }
 
+  /// Event: toggle favorite (optimistic update)
+  /// - Lật isFavorite trên UI ngay lập tức.
+  /// - Nếu ToggleFavorite thất bại, revert về trạng thái cũ.
   Future<void> _onFavoriteToggled(
     MangaDetailFavoriteToggled event,
     Emitter<MangaDetailState> emit,
@@ -210,6 +261,8 @@ class MangaDetailBloc extends Bloc<MangaDetailEvent, MangaDetailState> {
     }
   }
 
+  /// Event: đồng bộ lại trạng thái favorite từ kho (GetFavorites)
+  /// - Hữu ích khi quay lại màn hoặc khi có thay đổi từ nơi khác.
   Future<void> _onRefreshFavorite(
     MangaDetailRefreshFavorite event,
     Emitter<MangaDetailState> emit,
@@ -226,7 +279,9 @@ class MangaDetailBloc extends Bloc<MangaDetailEvent, MangaDetailState> {
     }
   }
 
-  /// Chọn ngôn ngữ -> reload chương từ đầu
+  /// Event: chọn ngôn ngữ → reload danh sách chương từ đầu
+  /// - selectedLanguage = null → All languages (repo fallback).
+  /// - Reset paging/chapters và gọi lại ListChapters.
   Future<void> _onSelectLanguage(
     MangaDetailSelectLanguage event,
     Emitter<MangaDetailState> emit,

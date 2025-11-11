@@ -1,5 +1,29 @@
 // ignore_for_file: constant_identifier_names
-// MangaDex Tag UUIDs 
+
+// ======================================================================
+// MangaDex Tag UUIDs
+//
+// Mục đích:
+//   - Map tên thể loại (genre) → UUID của MangaDex.
+//   - Dùng cho search với filter "includedTags[]" trong API `/manga`.
+//
+// Vai trò kiến trúc (Infrastructure):
+//   - Đây là hằng số thuần ở tầng infra (datasource).
+//   - Repository hoặc RemoteDataSource sẽ tra cứu tagId từ tên genre
+//     trước khi gọi API.
+//
+// Lưu ý API MangaDex:
+//   - Mỗi tag (Action, Romance, Comedy…) được định danh bằng UUID cố định.
+//   - Để filter theo thể loại: 
+//       includedTags[] = <tagUUID>
+//       includedTagsMode = AND
+//
+// Lưu ý mở rộng:
+//   - Có thể mở rộng thêm nhiều tag khác nếu cần.
+//   - Nên normalize key về lowercase trước khi tra (đã dùng .toLowerCase()).
+//
+// ======================================================================
+
 const Map<String, String> kMangaDexTagIds = {
   'action'  : '391b0423-d847-456f-aff0-8b0cfc03066b',
   'romance' : '423e2eae-a7a2-4a8b-ac03-a8351462d71d',

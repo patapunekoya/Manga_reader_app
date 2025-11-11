@@ -1,23 +1,33 @@
 import 'package:equatable/equatable.dart';
 
-/// FeedItem: item truyện rút gọn để show ở home/trending
+/// FeedItem: mô hình dữ liệu rút gọn cho màn Home / Trending / Latest Updates.
+/// 
+/// Đây là entity “nhẹ” dùng trong Discovery module.
+/// Không chứa logic hay phụ thuộc tầng dưới.
+/// 
+/// Dùng để:
+/// - Render card manga trong trang chủ.
+/// - Hiển thị trending / latest updates.
+/// - Navigate sang MangaDetail bằng id.
+///
+/// Các trường đều an toàn, không ép buộc UI phải biết JSON của MangaDex.
 class FeedItem extends Equatable {
-  /// manga id (dùng để navigate sang MangaDetail hoặc Reader)
+  /// ID manga (string thuần từ MangaDex)
   final String id;
 
-  /// tiêu đề hiển thị
+  /// Tiêu đề hiển thị
   final String title;
 
-  /// trạng thái truyện: ongoing, completed, dropped...
+  /// Trạng thái: ongoing / completed / hiatus / dropped
   final String status;
 
-  /// cover art url (có thể null nếu MangaDex không trả cover)
+  /// Link cover art (có thể null nếu không có)
   final String? coverImageUrl;
 
-  /// dòng phụ: vd "Ch.123", hoặc "2025-11-01T02:30:00"
+  /// Subtext: ví dụ "Ch.123" hoặc datetime update
   final String? lastChapterOrUpdate;
 
-  /// 1-2 tag (action, romance, etc.)
+  /// Danh sách 1–2 tag nổi bật
   final List<String> tags;
 
   const FeedItem({

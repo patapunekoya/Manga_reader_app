@@ -1,4 +1,36 @@
 // lib/presentation/widgets/reader_view.dart
+//
+// ReaderView
+// -----------------------------
+// Mục đích:
+// - Màn đọc truyện toàn màn hình nền tối.
+// - Hiển thị danh sách trang (PageImage) theo chiều dọc, lazy-load bằng CachedNetworkImage.
+// - Đồng bộ vị trí trang hiện tại về ReaderBloc khi người dùng cuộn.
+// - Render thanh công cụ (ReaderToolbar) ở đáy để Back/Prev/Next chapter.
+//
+// Vị trí trong flow:
+// - Được dùng bên trong ReaderShellPage (nơi tạo BlocProvider<ReaderBloc> và bắn ReaderLoadChapter).
+// - ReaderBloc lo gọi usecase lấy trang, prefetch, lưu progress theo CHAPTER.
+// - ReaderView chỉ là UI + scroll listener, không gọi network trực tiếp.
+//
+// Props cần truyền từ shell:
+// - onBackToManga: callback điều hướng về Manga Detail.
+// - onPrevChapter / onNextChapter: callback điều hướng sang chapter trước/sau.
+// - chapterLabel: chuỗi hiển thị nhãn chapter hiện tại, ví dụ "Ch.123".
+//
+// Lưu ý kỹ thuật:
+// - Để tránh tốn kém, ta KHÔNG dùng GlobalKey per item để đo chính xác chiều cao từng ảnh.
+//   Thay vào đó ước lượng sơ bộ (approxPageHeight = 800) rồi suy ra index hiện tại dựa trên
+//   scrollPixels / approxHeight. Cách này nhanh, ít rắc rối, chấp nhận sai số nhỏ.
+// - Với ảnh manga dọc, AspectRatio ~0.66–0.7 là hợp lý để layout ổn trên nhiều thiết bị.
+// - CachedNetworkImage tự lo placeholder, error và cache. Khi fail, ta gửi ReaderReportImageFailed
+//   để repo có thể log/analytics mà không ảnh hưởng UI.
+//
+// Hiệu năng/UX:
+// - Debounce khi lắng nghe scroll (180ms) để không spam event về Bloc.
+// - Prefetch logic nằm trong Bloc khi chuyển trang, ở đây chỉ cập nhật current page.
+// - Toolbar overlay có padding bottom để tránh che nội dung.
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -44,9 +76,13 @@ class ReaderView extends StatefulWidget {
 }
 
 class _ReaderViewState extends State<ReaderView> {
+  // Controller cho ListView để nghe vị trí cuộn
   final _scrollController = ScrollController();
+
+  // Debounce để hạn chế dispatch ReaderSetCurrentPage quá dày
   Timer? _scrollDebounce;
 
+  // Tính index trang hiện tại từ vị trí scroll (xấp xỉ)
   void _onScrollDebounced() {
     _scrollDebounce?.cancel();
     _scrollDebounce = Timer(const Duration(milliseconds: 180), () {
@@ -80,6 +116,9 @@ class _ReaderViewState extends State<ReaderView> {
     super.dispose();
   }
 
+  // Render 1 trang (PageImage)
+  // - Dùng CachedNetworkImage để có placeholder + cache
+  // - Khi lỗi ảnh: dispatch ReaderReportImageFailed để repo log
   Widget _buildPageItem(PageImage page, int totalPages) {
     final bloc = context.read<ReaderBloc>();
 
@@ -123,6 +162,7 @@ class _ReaderViewState extends State<ReaderView> {
   Widget build(BuildContext context) {
     return BlocBuilder<ReaderBloc, ReaderState>(
       builder: (context, state) {
+        // Trạng thái loading/initial: nền đen + spinner trắng
         if (state.status == ReaderStatus.loading ||
             state.status == ReaderStatus.initial) {
           return Container(
@@ -133,6 +173,7 @@ class _ReaderViewState extends State<ReaderView> {
           );
         }
 
+        // Trạng thái failure: hiển thị lỗi thân thiện
         if (state.status == ReaderStatus.failure) {
           return Container(
             color: Colors.black,
@@ -148,6 +189,7 @@ class _ReaderViewState extends State<ReaderView> {
           );
         }
 
+        // Trạng thái success: có pages để hiển thị
         final pages = state.pages;
         final totalPages = pages.length;
 
@@ -156,6 +198,7 @@ class _ReaderViewState extends State<ReaderView> {
           child: Stack(
             children: [
               // Scroll pages
+              // - padding bottom 100 để chừa chỗ cho toolbar không che nội dung
               ListView.builder(
                 controller: _scrollController,
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
@@ -167,6 +210,8 @@ class _ReaderViewState extends State<ReaderView> {
               ),
 
               // bottom toolbar overlay
+              // - Gọi ReaderToolbar đã tách riêng widget
+              // - Truyền currentPage từ state.currentPage.value
               Positioned(
                 left: 0,
                 right: 0,

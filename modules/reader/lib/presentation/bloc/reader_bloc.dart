@@ -1,4 +1,30 @@
 // modules/reader/lib/presentation/bloc/reader_bloc.dart
+//
+// Đây là BLoC điều khiển toàn bộ Reader Screen:
+// - Load chapter
+// - Trả về danh sách PageImage
+// - Điều hướng page (PageIndex)
+// - Prefetch trang sắp tới
+// - Báo lỗi ảnh
+// - Lưu tiến trình đọc (CHAPTER-ONLY)
+//
+// Luồng chuẩn khi user mở 1 chapter:
+// UI -> ReaderLoadChapter(chapterId, mangaId, mangaTitle, cover, chapterNumber)
+// Bloc -> gọi GetChapterPages -> emit success -> UI render pages
+// Bloc -> lưu tiến trình ngay khi mở (saveReadProgress)
+// Bloc -> prefetch vài trang đầu
+//
+// Khi user lướt page:
+// UI -> ReaderSetCurrentPage(PageIndex)
+// Bloc -> update currentPage
+// Bloc -> prefetch trang sắp tới khi gần cuối
+//
+// Khi ảnh load lỗi:
+// UI -> ReaderReportImageFailed
+// Bloc -> reportImageError (log)
+//
+// ========================================================================
+
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:meta/meta.dart';
@@ -16,6 +42,7 @@ part 'reader_event.dart';
 part 'reader_state.dart';
 
 class ReaderBloc extends Bloc<ReaderEvent, ReaderState> {
+  // Các usecase bắt buộc phải inject vào
   final GetChapterPages _getChapterPages;
   final PrefetchPages _prefetchPages;
   final ReportImageError _reportImageError;
@@ -31,19 +58,29 @@ class ReaderBloc extends Bloc<ReaderEvent, ReaderState> {
         _reportImageError = reportImageError,
         _saveReadProgress = saveReadProgress,
         super(const ReaderState.initial()) {
+    // Khi user yêu cầu mở 1 chapter
     on<ReaderLoadChapter>(_onLoadChapter);
+
+    // Khi user scroll sang 1 trang khác
     on<ReaderSetCurrentPage>(_onSetCurrentPage);
+
+    // Khi 1 trang load ảnh bị lỗi
     on<ReaderReportImageFailed>(_onReportImageFailed);
   }
 
+  // ===========================================================================
+  // 1) LOAD CHAPTER
+  // ===========================================================================
   Future<void> _onLoadChapter(
     ReaderLoadChapter event,
     Emitter<ReaderState> emit,
   ) async {
+    // Khi load, set trạng thái loading + set metadata để lưu progress
     emit(state.copyWith(
       status: ReaderStatus.loading,
       chapterId: event.chapterId,
-      // set metadata để có đủ dữ liệu lưu progress (CHAPTER-ONLY)
+
+      // Metadata cần để saveReadProgress
       mangaId: event.mangaId ?? state.mangaId,
       mangaTitle: event.mangaTitle ?? state.mangaTitle,
       coverImageUrl: event.coverImageUrl ?? state.coverImageUrl,
@@ -51,13 +88,15 @@ class ReaderBloc extends Bloc<ReaderEvent, ReaderState> {
     ));
 
     try {
+      // Gọi API lấy toàn bộ danh sách PageImage của chapter
       final pages = await _getChapterPages(
         chapterId: event.chapterId,
       );
 
-      // resume page nếu cần (vẫn để 0 vì CHAPTER-ONLY)
+      // CHAPTER-ONLY: luôn bắt đầu ở trang 0
       final startIndex = 0;
 
+      // Emit thành công -> UI dựng Reader
       emit(state.copyWith(
         status: ReaderStatus.success,
         pages: pages,
@@ -65,12 +104,13 @@ class ReaderBloc extends Bloc<ReaderEvent, ReaderState> {
         errorMessage: null,
       ));
 
-      // Prefetch mấy trang đầu kế tiếp
+      // Prefetch vài trang tiếp theo (3 trang)
       await _prefetchPages(
         pages: pages.take(3).toList(),
       );
 
-      // LƯU TIẾN TRÌNH THEO CHAPTER (ngay khi mở chapter)
+      // LƯU TIẾN TRÌNH THEO CHAPTER
+      // Không lưu page nữa, chỉ lưu chapter + metadata
       if (state.mangaId.isNotEmpty && state.chapterId.isNotEmpty) {
         await _saveReadProgress(
           mangaId: state.mangaId,
@@ -79,7 +119,6 @@ class ReaderBloc extends Bloc<ReaderEvent, ReaderState> {
               state.coverImageUrl.isEmpty ? null : state.coverImageUrl,
           chapterId: state.chapterId,
           chapterNumber: state.chapterNumber,
-
         );
       }
     } catch (e) {
@@ -90,30 +129,37 @@ class ReaderBloc extends Bloc<ReaderEvent, ReaderState> {
     }
   }
 
+  // ===========================================================================
+  // 2) SET CURRENT PAGE
+  // ===========================================================================
   Future<void> _onSetCurrentPage(
     ReaderSetCurrentPage event,
     Emitter<ReaderState> emit,
   ) async {
-    // vẫn cập nhật current page để UI hiển thị 1/ N
+    // Update current page để UI show 1/xx
     emit(state.copyWith(currentPage: event.pageIndex));
 
-    // Prefetch sớm khi sắp tới cuối
+    // Prefetch khi gần tới cuối chapter
     final total = state.pages.length;
     final cur = event.pageIndex.value;
+
     if (total - cur < 4 && total > 0) {
+      // Lấy thêm 5 trang sắp tới
       final tail = state.pages.skip(cur).take(5).toList();
       await _prefetchPages(pages: tail);
     }
 
-    // CHAPTER-ONLY: Không lưu page nữa.
-    // Nếu anh muốn lưu thời điểm “đang đọc” cũng được, nhưng vẫn đánh dấu theo chapter.
-    // => bỏ _saveReadProgress ở đây.
+    // Không lưu page-index, vì đang dùng CHAPTER-ONLY
   }
 
+  // ===========================================================================
+  // 3) REPORT IMAGE FAILED
+  // ===========================================================================
   Future<void> _onReportImageFailed(
     ReaderReportImageFailed event,
     Emitter<ReaderState> emit,
   ) async {
+    // Báo lỗi ảnh để analytics hoặc debug log
     await _reportImageError(
       chapterId: state.chapterId,
       pageIndex: event.pageIndex,

@@ -1,19 +1,43 @@
 // lib/presentation/widgets/feed_carousel.dart
+//
+// -----------------------------------------------------------------------------
+// FeedCarousel
+// -----------------------------------------------------------------------------
+// Chức năng file:
+// - Định nghĩa widget hiển thị danh sách manga dạng băng chuyền ngang
+//   (horizontal ListView) dùng cho các section như "Trending", "Latest Updates".
+// - Chỉ nhận vào dữ liệu rút gọn FeedItem từ domain discovery.
+//
+// Kiến trúc & vai trò:
+// - Thuần UI (presentation/widgets). Không gọi API, không chứa logic business.
+// - Nhận list<FeedItem> + callback onTapItem để màn hình cha điều hướng.
+// - Tái sử dụng được ở nhiều nơi (home, chuyên mục, v.v.)
+//
+// Quy ước hiển thị:
+// - Nền tối, chữ sáng, card bo góc.
+// - Mỗi item gồm: cover 3:4, tiêu đề 2 dòng, trạng thái + lastChapter/update,
+//   và tối đa 2 tag.
+//
+// Lưu ý hiệu năng:
+// - Dùng CachedNetworkImage để cache ảnh bìa.
+// - ListView.separated để có khoảng cách giữa item, tiết kiệm widget.
+// -----------------------------------------------------------------------------
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:discovery/domain/entities/feed_item.dart';
 import 'package:flutter/material.dart';
 
 /// FeedCarousel:
-/// - Dùng để render 1 danh sách manga dạng ngang (horizontal scroll)
-/// - Thường dùng cho "Trending" hoặc "Latest Updates"
-///
-/// Thằng Home module có thể import widget này rồi truyền list<FeedItem>.
-///
-/// UI style: dark mode, card bo góc, text trắng.
+/// - Widget section gồm tiêu đề + list ngang các thẻ manga.
+/// - Thích hợp để nhúng vào trang Home hoặc màn "Khám phá".
 class FeedCarousel extends StatelessWidget {
+  /// Tiêu đề section: ví dụ "Trending" hoặc "Latest Updates".
   final String title;
+
+  /// Dữ liệu hiển thị: mỗi phần tử là FeedItem rút gọn (id, title, cover...).
   final List<FeedItem> items;
+
+  /// Callback khi bấm vào 1 item: trả về mangaId để cha tự điều hướng.
   final void Function(String mangaId)? onTapItem;
 
   const FeedCarousel({
@@ -27,6 +51,7 @@ class FeedCarousel extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
+    // Trạng thái rỗng: vẫn hiển thị tiêu đề + dòng thông báo
     if (items.isEmpty) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -49,10 +74,11 @@ class FeedCarousel extends StatelessWidget {
       );
     }
 
+    // Trạng thái có dữ liệu: tiêu đề + list ngang
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Header section title
+        // -------------------- Header: Section title --------------------
         Text(
           title,
           style: theme.textTheme.titleLarge?.copyWith(
@@ -62,8 +88,10 @@ class FeedCarousel extends StatelessWidget {
         ),
         const SizedBox(height: 12),
 
+        // -------------------- List ngang các card ----------------------
+        // Chiều cao cố định để giữ layout ổn định (cover 3:4 + text)
         SizedBox(
-          height: 220, // chiều cao tổng của card
+          height: 220,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: items.length,
@@ -78,11 +106,11 @@ class FeedCarousel extends StatelessWidget {
                   }
                 },
                 child: SizedBox(
-                  width: 140,
+                  width: 140, // Độ rộng mỗi card
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Cover
+                      // ---------------- Cover 3:4 bo góc ----------------
                       AspectRatio(
                         aspectRatio: 3 / 4,
                         child: ClipRRect(
@@ -93,9 +121,11 @@ class FeedCarousel extends StatelessWidget {
                                 ? CachedNetworkImage(
                                     imageUrl: it.coverImageUrl!,
                                     fit: BoxFit.cover,
+                                    // Placeholder đơn giản cho lúc load ảnh
                                     placeholder: (ctx, _) => Container(
                                       color: const Color(0xFF2A2A2D),
                                     ),
+                                    // Nếu lỗi ảnh: icon báo lỗi
                                     errorWidget: (ctx, _, __) => Container(
                                       color: Colors.black26,
                                       alignment: Alignment.center,
@@ -106,6 +136,7 @@ class FeedCarousel extends StatelessWidget {
                                     ),
                                   )
                                 : Container(
+                                    // Không có cover -> placeholder
                                     color: const Color(0xFF2A2A2D),
                                     alignment: Alignment.center,
                                     child: const Icon(
@@ -119,7 +150,7 @@ class FeedCarousel extends StatelessWidget {
 
                       const SizedBox(height: 8),
 
-                      // Title
+                      // -------------------- Tiêu đề 2 dòng --------------
                       Text(
                         it.title,
                         maxLines: 2,
@@ -133,7 +164,7 @@ class FeedCarousel extends StatelessWidget {
 
                       const SizedBox(height: 4),
 
-                      // Status + lastChapterOrUpdate
+                      // ---- Hàng trạng thái + lastChapter/updatedAt -----
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -156,7 +187,8 @@ class FeedCarousel extends StatelessWidget {
 
                       const SizedBox(height: 4),
 
-                      // Tags (show chỉ 2 tag đầu cho gọn)
+                      // -------------------- Tag pills (tối đa 2) --------
+                      // Gọn, không chiếm quá nhiều chiều cao.
                       Wrap(
                         spacing: 4,
                         runSpacing: -4,
@@ -192,13 +224,19 @@ class FeedCarousel extends StatelessWidget {
   }
 }
 
+// -----------------------------------------------------------------------------
+// _StatusBadge: pill nhỏ hiển thị trạng thái (ongoing/completed/khác)
+// - Màu nền/ chữ được chọn đơn giản dựa theo chuỗi status.
+// - Tách riêng để tái sử dụng trong nhiều nơi nếu cần.
+// -----------------------------------------------------------------------------
 class _StatusBadge extends StatelessWidget {
   final String status;
 
   const _StatusBadge({required this.status});
 
+  // Chọn màu nền theo status
   Color _bgForStatus() {
-    // ongoing -> vàng nhẹ, completed -> xanh lá nhẹ, unknown -> xám
+    // ongoing -> vàng nâu; completed -> xanh lá; khác -> xám
     final low = status.toLowerCase();
     if (low.contains('ongoing')) {
       return const Color(0xFF4B3F00); // vàng nâu nhẹ
@@ -209,6 +247,7 @@ class _StatusBadge extends StatelessWidget {
     return const Color(0xFF2A2A2D); // fallback xám
   }
 
+  // Chọn màu chữ theo status
   Color _fgForStatus() {
     final low = status.toLowerCase();
     if (low.contains('ongoing')) {

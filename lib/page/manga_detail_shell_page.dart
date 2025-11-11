@@ -6,6 +6,21 @@ import 'package:go_router/go_router.dart';
 import 'package:catalog/presentation/bloc/manga_detail_bloc.dart';
 import 'package:catalog/presentation/widgets/manga_detail_view.dart';
 
+/// ======================================================================
+/// File: page/manga_detail_shell_page.dart
+/// Mục đích:
+///   - “Shell” mỏng cho màn Chi tiết Manga.
+///   - Lấy MangaDetailBloc từ DI, trigger load theo mangaId.
+///   - Điều hướng ngược về đúng tab nguồn (home/search/library) khi back.
+///   - Điều hướng tới Reader khi chọn một chapter trong MangaDetailView.
+/// Dòng chảy:
+///   UI (MangaDetailView) -> onOpenChapter(...) -> push /reader/:chapterId + extra
+///   Khởi tạo: add(MangaDetailLoadRequested(mangaId)) -> Bloc phát state (manga, chapters)
+/// Lưu ý:
+///   - Không đọc context trong initState để tránh phụ thuộc Router lúc init.
+///   - Mọi tham số điều hướng encode an toàn (Uri.encodeComponent).
+///   - Truyền 'chapters', 'currentIndex', 'chapterNumbers' qua state.extra để Reader có đủ ngữ cảnh.
+/// ======================================================================
 class MangaDetailShellPage extends StatefulWidget {
   final String mangaId;
   // Nhận origin từ router: 'home' | 'search' | 'library'
@@ -22,7 +37,9 @@ class MangaDetailShellPage extends StatefulWidget {
 }
 
 class _MangaDetailShellPageState extends State<MangaDetailShellPage> {
+  // Bloc chi tiết manga (lifecycle gắn với trang này)
   late final MangaDetailBloc _bloc;
+  // Lưu origin cục bộ để back đúng nơi, không phụ thuộc context về sau
   late final String _origin;
 
   @override
@@ -39,6 +56,9 @@ class _MangaDetailShellPageState extends State<MangaDetailShellPage> {
     super.dispose();
   }
 
+  /// Điều hướng "Quay lại":
+  /// - Nếu còn stack để pop → pop.
+  /// - Nếu không, dựa vào origin để go() về đúng tab gốc (thay thế stack).
   void _handleBack() {
     if (context.canPop()) {
       context.pop();
@@ -58,6 +78,8 @@ class _MangaDetailShellPageState extends State<MangaDetailShellPage> {
     }
   }
 
+  /// Toggle Favorite (placeholder):
+  /// - Thực thi UseCase/Bloc thật ở phiên bản sau.
   void _toggleFavorite() {
     debugPrint("Toggle favorite for manga ${widget.mangaId}");
   }
@@ -65,6 +87,7 @@ class _MangaDetailShellPageState extends State<MangaDetailShellPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // AppBar tối, nút back thủ công để đảm bảo back về đúng origin
       appBar: AppBar(
         backgroundColor: const Color(0xFF0F0F10),
         elevation: 0,
@@ -73,6 +96,7 @@ class _MangaDetailShellPageState extends State<MangaDetailShellPage> {
           onPressed: _handleBack,
           tooltip: 'Quay lại',
         ),
+        // Tiêu đề động theo state.manga.title, chỉ rebuild khi manga thay đổi
         title: BlocBuilder<MangaDetailBloc, MangaDetailState>(
           bloc: _bloc,
           buildWhen: (p, c) => p.manga != c.manga,
@@ -94,6 +118,7 @@ class _MangaDetailShellPageState extends State<MangaDetailShellPage> {
           value: _bloc,
           child: BlocBuilder<MangaDetailBloc, MangaDetailState>(
             builder: (context, state) {
+              // Chuẩn hóa dữ liệu để truyền sang Reader
               final chapterIds = state.chapters.map((c) => c.id.value).toList();
               final chapterNumbers = state.chapters.map((c) => c.chapterNumber).toList();
 
@@ -102,10 +127,16 @@ class _MangaDetailShellPageState extends State<MangaDetailShellPage> {
 
               return MangaDetailView(
                 mangaId: widget.mangaId,
+                // Khi người dùng chọn một chapter
                 onOpenChapter: (String tappedChapterId, {int pageIndex = 0}) {
+                  // Tìm vị trí chapter trong danh sách để Reader biết currentIndex
                   final idx = chapterIds.indexOf(tappedChapterId);
                   final safeIndex = idx < 0 ? 0 : idx;
 
+                  // Điều hướng sang Reader:
+                  // - Path param: :chapterId
+                  // - Query: mangaId, page, mangaTitle, coverImageUrl
+                  // - Extra: list chapterIds, currentIndex, chapterNumbers
                   context.push(
                     '/reader/$tappedChapterId'
                     '?mangaId=${widget.mangaId}'
@@ -115,7 +146,7 @@ class _MangaDetailShellPageState extends State<MangaDetailShellPage> {
                     extra: {
                       'chapters': chapterIds,
                       'currentIndex': safeIndex,
-                      'chapterNumbers': chapterNumbers,
+                      'chapterNumbers': chapterNumbers, // có thể là int/String mixture → Reader ép String
                     },
                   );
                 },

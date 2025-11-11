@@ -11,6 +11,32 @@ import 'chapter_tile.dart';
 // “Đọc tiếp”
 import 'package:library_manga/application/usecases/get_continue_reading.dart';
 
+/// =========================================================================
+/// WIDGET: MangaDetailView (Stateful)
+///
+/// Mục đích
+/// - Hiển thị toàn bộ trang chi tiết manga: header (cover, info, actions),
+///   mô tả (có nút xem thêm/thu gọn), danh sách chương (có sort + filter ngôn ngữ),
+///   và tích hợp “Đọc tiếp” dựa trên tiến độ đã lưu từ module library.
+///
+/// Cách hoạt động tổng quát
+/// - Khi initState:
+///   • Dispatch `MangaDetailLoadRequested(mangaId)` để tải detail + chapters.
+///   • Gắn listener cho ScrollController để bắn `MangaDetailLoadMoreChapters` khi gần cuối.
+///   • Gọi `_reloadProgress()` để lấy chương gần nhất đã đọc (star).
+/// - Khi bấm chương: gọi `onOpenChapter` do shell/router truyền vào.
+/// - Khi bấm “Đọc từ đầu”: chọn chương đầu theo sort hiện tại.
+/// - Khi bấm “Đọc tiếp”: mở chương lưu gần nhất, fallback sang “Đọc từ đầu”.
+///
+/// Input
+/// - mangaId: id manga.
+/// - onOpenChapter(chapterId, pageIndex=0): callback mở reader.
+/// - onToggleFavorite: callback toggle favorite (đã dùng bloc event thay thế bên dưới).
+///
+/// Lưu ý
+/// - Không tự tạo BLoC ở đây; view nhận BLoC qua context (BlocProvider ở shell).
+/// - Dùng GetIt chỉ cho usecase “Đọc tiếp”; còn BLoC do shell inject.
+/// =========================================================================
 class MangaDetailView extends StatefulWidget {
   final String mangaId;
   final void Function(String chapterId, {int pageIndex})? onOpenChapter; // pageIndex luôn 0
@@ -29,21 +55,29 @@ class MangaDetailView extends StatefulWidget {
 
 class _MangaDetailViewState extends State<MangaDetailView>
     with TickerProviderStateMixin {
+  /// ScrollController để:
+  /// - theo dõi vị trí cuộn
+  /// - tự động loadMore khi gần cuối danh sách chapter
   final _scrollController = ScrollController();
 
+  /// Chapter gần nhất đã đọc (để hiển thị ⭐)
   String? _lastReadChapterId;
+
+  /// Cờ trạng thái đang tải “tiến độ đọc”
   bool _progressLoading = true;
 
-  // Toggle mô tả: 4 dòng ↔ full
+  /// Cờ để mở rộng/thu gọn mô tả
   bool _descExpanded = false;
 
   @override
   void initState() {
     super.initState();
 
+    /// Lấy BLoC từ context (đã được shell cung cấp) rồi bắn event load
     final bloc = context.read<MangaDetailBloc>();
     bloc.add(MangaDetailLoadRequested(widget.mangaId)); // mặc định ASC
 
+    /// Listener: cuộn gần cuối 200px → load thêm chapters
     _scrollController.addListener(() {
       if (_scrollController.position.pixels >
           _scrollController.position.maxScrollExtent - 200) {
@@ -51,15 +85,20 @@ class _MangaDetailViewState extends State<MangaDetailView>
       }
     });
 
+    /// Nạp tiến độ đọc để đánh dấu chương đã đọc gần nhất
     _reloadProgress();
   }
 
   @override
   void dispose() {
+    /// Hủy controller để tránh leak
     _scrollController.dispose();
     super.dispose();
   }
 
+  /// Tải lại tiến độ đọc từ usecase GetContinueReading
+  /// - Lọc theo mangaId hiện tại
+  /// - Lấy phần tử đầu (newest theo usecase) → _lastReadChapterId
   Future<void> _reloadProgress() async {
     setState(() => _progressLoading = true);
     try {
@@ -78,6 +117,8 @@ class _MangaDetailViewState extends State<MangaDetailView>
     }
   }
 
+  /// Điều hướng mở chapter (qua callback shell).
+  /// - Sau khi mở, đợi 300ms rồi reload progress để cập nhật đánh dấu
   Future<void> _openChapter(String chapterId) async {
     if (widget.onOpenChapter != null) {
       widget.onOpenChapter!(chapterId, pageIndex: 0);
@@ -89,11 +130,17 @@ class _MangaDetailViewState extends State<MangaDetailView>
     }
   }
 
+  /// Lấy chương “đầu danh sách” theo sort hiện tại
+  /// - ascending == true  → first
+  /// - ascending == false → last
   Chapter? _pickStartChapter(MangaDetailState st) {
     if (st.chapters.isEmpty) return null;
     return st.ascending ? st.chapters.first : st.chapters.last;
   }
 
+  /// Handler nút “Đọc từ đầu”
+  /// - Lấy chương đầu theo sort
+  /// - Nếu không có dữ liệu → báo SnackBar
   Future<void> _handleReadFromStart() async {
     final st = context.read<MangaDetailBloc>().state;
     final first = _pickStartChapter(st);
@@ -106,6 +153,9 @@ class _MangaDetailViewState extends State<MangaDetailView>
     _openChapter(first.id.value);
   }
 
+  /// Handler nút “Đọc tiếp”
+  /// - Nếu đã có _lastReadChapterId → mở chương đó
+  /// - Nếu chưa, fallback sang đọc từ đầu
   Future<void> _handleReadContinue() async {
     final st = context.read<MangaDetailBloc>().state;
     if (_lastReadChapterId != null && _lastReadChapterId!.isNotEmpty) {
@@ -123,6 +173,8 @@ class _MangaDetailViewState extends State<MangaDetailView>
   }
 
   // --------- DESCRIPTION WITH EXPAND/COLLAPSE ---------
+  /// Vẽ mô tả có nút “Xem thêm / Thu gọn” nếu dài > 180 ký tự.
+  /// Dùng AnimatedSize để chuyển đổi mượt số dòng.
   Widget _buildDescription(String text) {
     // Nếu quá ngắn thì khỏi hiện nút
     final needsExpandButton = text.trim().length > 180;
@@ -161,6 +213,9 @@ class _MangaDetailViewState extends State<MangaDetailView>
     );
   }
 
+  /// Vẽ phần Header: Cover + Info + Actions (Đọc từ đầu, Đọc tiếp, Yêu thích)
+  /// - Tag line: tối đa 4 tag, ngăn bởi dấu " • "
+  /// - Favorite: phát event `MangaDetailFavoriteToggled`
   Widget _buildHeader(Manga manga) {
     final th = Theme.of(context);
     final tagLine = manga.tags.take(4).join(" • ");
@@ -229,6 +284,10 @@ class _MangaDetailViewState extends State<MangaDetailView>
           const SizedBox(height: 12),
 
           // ACTIONS
+          /// Hai nút đọc + nút favorite:
+          /// - Đọc từ đầu: xác định chương đầu theo sort
+          /// - Đọc tiếp: mở chương lưu gần nhất; nếu không có thì fallback
+          /// - Favorite: trigger event toggle để cập nhật Hive qua usecase
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -291,6 +350,7 @@ class _MangaDetailViewState extends State<MangaDetailView>
 
           const SizedBox(height: 16),
 
+          /// Mô tả: chỉ render khi không rỗng; có “Xem thêm/Thu gọn”
           if (manga.description != null &&
               manga.description!.trim().isNotEmpty)
             _buildDescription(manga.description!.trim()),
@@ -299,6 +359,10 @@ class _MangaDetailViewState extends State<MangaDetailView>
     );
   }
 
+  /// Vẽ section danh sách chương:
+  /// - Header có: tiêu đề, nút sort (Asc/Desc), filter ngôn ngữ (PopupMenu)
+  /// - Body: list ChapterTile, tô ⭐ nếu trùng _lastReadChapterId
+  /// - LoadingMore: hiển thị loading tròn cuối danh sách
   Widget _buildChapterSection(
     List<Chapter> chapters,
     bool ascending,
@@ -340,7 +404,7 @@ class _MangaDetailViewState extends State<MangaDetailView>
                 ),
                 const Spacer(),
 
-                // SORT
+                // SORT (đảo ascending)
                 TextButton.icon(
                   onPressed: () {
                     bloc.add(const MangaDetailToggleSort());
@@ -361,6 +425,9 @@ class _MangaDetailViewState extends State<MangaDetailView>
                 const SizedBox(width: 4),
 
                 // LANGUAGE FILTER
+                /// Popup chọn ngôn ngữ:
+                /// - `null` = All
+                /// - code cụ thể: en/vi/... (upper để hiển thị)
                 PopupMenuButton<String?>(
                   tooltip: 'Ngôn ngữ',
                   icon: const Icon(Icons.translate,
@@ -411,6 +478,7 @@ class _MangaDetailViewState extends State<MangaDetailView>
             ),
           ),
 
+          // Thanh progress cho phần đọc tiếp (khi đang fetch)
           if (_progressLoading)
             const Padding(
               padding:
@@ -418,6 +486,7 @@ class _MangaDetailViewState extends State<MangaDetailView>
               child: LinearProgressIndicator(minHeight: 2),
             ),
 
+          // Danh sách ChapterTile
           ...visibleChapters.map((c) {
             final isLastRead = (_lastReadChapterId != null &&
                 _lastReadChapterId == c.id.value);
@@ -428,6 +497,7 @@ class _MangaDetailViewState extends State<MangaDetailView>
             );
           }),
 
+          // Loading tròn khi đang loadMore
           if (status == MangaDetailStatus.loadingMoreChapters)
             const Padding(
               padding: EdgeInsets.all(16),
@@ -440,12 +510,15 @@ class _MangaDetailViewState extends State<MangaDetailView>
 
   @override
   Widget build(BuildContext context) {
+    /// Lắng nghe MangaDetailState để render
     return BlocBuilder<MangaDetailBloc, MangaDetailState>(
       builder: (context, state) {
+        // Trạng thái loading/initial: spinner
         if (state.status == MangaDetailStatus.loading ||
             state.status == MangaDetailStatus.initial) {
           return const Center(child: CircularProgressIndicator());
         }
+        // Lỗi ngay từ đầu (chưa có manga): báo lỗi
         if (state.status == MangaDetailStatus.failure &&
             state.manga == null) {
           return Center(
@@ -457,6 +530,7 @@ class _MangaDetailViewState extends State<MangaDetailView>
           );
         }
 
+        // Thành công: render header + chapter section
         final manga = state.manga!;
         return Container(
           color: const Color(0xFF0F0F10),

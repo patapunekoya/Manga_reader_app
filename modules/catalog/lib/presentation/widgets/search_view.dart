@@ -1,4 +1,29 @@
 // lib/presentation/widgets/search_view.dart
+//
+// PURPOSE
+// - Màn hình Search: nhập từ khóa + lọc theo thể loại, hiển thị kết quả dạng Grid,
+//   hỗ trợ phân trang (infinite scroll) và debounce khi gõ.
+// - Không tự điều hướng; nhận callback onTapManga để router/shell xử lý.
+//
+// KIẾN TRÚC & LUỒNG DỮ LIỆU
+// - UI phát sự kiện vào SearchBloc:
+//    • SearchStarted(query, genre) khi người dùng gõ hoặc đổi thể loại.
+//    • SearchLoadMore khi kéo gần cuối danh sách.
+// - Bloc giữ state: query hiện tại, genre hiện tại (nullable = All), items, offset, hasMore, status.
+// - Debounce 400ms cho text input để giảm số lần gọi API.
+// - Lần mở trang đầu tiên: tự fire SearchStarted('', null) để hiển thị "All".
+//
+// THÀNH PHẦN CHÍNH
+// 1) Thanh search + nút clear: nhập query, debounce, giữ nguyên genre hiện tại.
+// 2) Dropdown thể loại: 'All' → NULL genre để repo không lọc; còn lại pass đúng genre.
+// 3) Status mini: hiển thị Loading… / số kết quả / lỗi mạng / không có kết quả.
+// 4) Grid kết quả: MangaCard; itemCount += 1 khi đang loadingMore để render spinner cuối grid.
+// 5) Infinite scroll: khi còn cách đáy ~200px → phát SearchLoadMore.
+//
+// LƯU Ý
+// - Không tự đóng/mở BLoC ở đây; Bloc được cung cấp từ trang Shell (SearchShellPage).
+// - Không thay đổi code logic; chỉ bổ sung chú thích giải thích.
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -19,13 +44,14 @@ class SearchView extends StatefulWidget {
 }
 
 class _SearchViewState extends State<SearchView> {
+  // Controller cho ô nhập và Grid
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
 
-  // debounce cho text search
+  // Debounce typing
   Timer? _debounce;
 
-  // list thể loại tạm thời hard-code, sau này có thể lấy từ API tag của MangaDex
+  // Danh sách thể loại (hard-code). Sau có thể map sang Tag của MangaDex.
   final List<String> _genres = const [
     'All',
     'Action',
@@ -38,25 +64,24 @@ class _SearchViewState extends State<SearchView> {
     'Sci-Fi',
   ];
 
-@override
-void initState() {
-  super.initState();
+  @override
+  void initState() {
+    super.initState();
 
-  // Gửi event ban đầu để hiện "All" ngay khi mở trang
-  Future.microtask(() {
-    context.read<SearchBloc>().add(const SearchStarted(query: '', genre: null));
-  });
+    // Fire initial search để có state "All" ngay khi mở trang
+    Future.microtask(() {
+      context.read<SearchBloc>().add(const SearchStarted(query: '', genre: null));
+    });
 
-  // infinite scroll
-  _scrollController.addListener(() {
-    final bloc = context.read<SearchBloc>();
-    if (_scrollController.position.pixels >
-        _scrollController.position.maxScrollExtent - 200) {
-      bloc.add(const SearchLoadMore());
-    }
-  });
-}
-
+    // Infinite scroll: khi gần chạm đáy 200px → load thêm
+    _scrollController.addListener(() {
+      final bloc = context.read<SearchBloc>();
+      if (_scrollController.position.pixels >
+          _scrollController.position.maxScrollExtent - 200) {
+        bloc.add(const SearchLoadMore());
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -66,7 +91,7 @@ void initState() {
     super.dispose();
   }
 
-  // Khi user gõ text
+  // Khi user gõ: debounce 400ms rồi phát SearchStarted, giữ nguyên genre hiện tại
   void _onQueryChanged(String value, SearchState currentState) {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 400), () {
@@ -79,9 +104,8 @@ void initState() {
     });
   }
 
-  // Khi user đổi thể loại
+  // Khi đổi thể loại: 'All' → null (bỏ lọc), còn lại giữ nguyên query hiện tại
   void _onGenreChanged(String newGenre, SearchState currentState) {
-    // cập nhật search dựa trên query hiện tại + thể loại mới
     final genreParam = (newGenre == 'All') ? null : newGenre;
 
     context.read<SearchBloc>().add(
@@ -92,7 +116,7 @@ void initState() {
         );
   }
 
-  // nút clear text
+  // Nút clear query: xóa text và fire search rỗng với genre hiện tại
   void _clearQuery(SearchState currentState) {
     _controller.clear();
     context.read<SearchBloc>().add(
@@ -113,7 +137,7 @@ void initState() {
         bottom: false,
         child: BlocBuilder<SearchBloc, SearchState>(
           builder: (context, state) {
-            // để tiện tính dropdown value
+            // Giá trị dropdown hiển thị: null → 'All', còn lại in ra genre hiện tại
             final dropdownValue = state.genre == null ? 'All' : state.genre!;
 
             return Column(
@@ -155,10 +179,12 @@ void initState() {
                               ),
                               border: InputBorder.none,
                             ),
+                            // Gọi _onQueryChanged để debounce và phát event
                             onChanged: (val) => _onQueryChanged(val, state),
                           ),
                         ),
 
+                        // Nút clear chỉ hiện khi có text
                         if (_controller.text.isNotEmpty)
                           GestureDetector(
                             onTap: () => _clearQuery(state),
@@ -178,7 +204,7 @@ void initState() {
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                   child: Row(
                     children: [
-                      // Dropdown genre
+                      // Dropdown genre: map chuỗi label → giá trị gửi lên Bloc
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         decoration: BoxDecoration(
@@ -224,7 +250,7 @@ void initState() {
 
                       const SizedBox(width: 12),
 
-                      // status mini: "Loading...", "12 kết quả", "Lỗi mạng", ...
+                      // Status mini: Loading… / lỗi / số kết quả / không có kết quả
                       Expanded(
                         child: Align(
                           alignment: Alignment.centerLeft,
@@ -236,6 +262,7 @@ void initState() {
                 ),
 
                 // ===== GRID KẾT QUẢ =====
+                // Body render theo state (initial/loading/failure/success)
                 Expanded(
                   child: _buildBodyByState(
                     state,
@@ -250,39 +277,48 @@ void initState() {
     );
   }
 
+  // Quyết định nội dung body theo SearchState
   Widget _buildBodyByState(
-  SearchState state, {
-  required ScrollController scrollController,
-}) {
-  // HIỆN HINT chỉ khi còn trạng thái initial
-  if (state.status == SearchStatus.initial) {
-    return const _EmptyHint(text: "Nhập tên truyện hoặc chọn thể loại để tìm.");
-  }
+    SearchState state, {
+    required ScrollController scrollController,
+  }) {
+    // Gợi ý ban đầu
+    if (state.status == SearchStatus.initial) {
+      return const _EmptyHint(text: "Nhập tên truyện hoặc chọn thể loại để tìm.");
+    }
 
-  if (state.status == SearchStatus.loading && state.items.isEmpty) {
-    return const Center(child: CircularProgressIndicator());
-  }
+    // Đang loading trang đầu
+    if (state.status == SearchStatus.loading && state.items.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-  if (state.status == SearchStatus.failure && state.items.isEmpty) {
-    return _EmptyHint(text: "Không tìm thấy hoặc lỗi mạng.\n${state.errorMessage ?? ''}");
-  }
+    // Lỗi khi chưa có item nào
+    if (state.status == SearchStatus.failure && state.items.isEmpty) {
+      return _EmptyHint(text: "Không tìm thấy hoặc lỗi mạng.\n${state.errorMessage ?? ''}");
+    }
 
-  // Success: có hoặc chưa có item
-  if (state.status == SearchStatus.success && state.items.isEmpty) {
-    // Cho phép All rỗng vẫn ra "Không có kết quả"
-    return const _EmptyHint(text: "Không có kết quả");
-  }
+    // Thành công nhưng rỗng
+    if (state.status == SearchStatus.success && state.items.isEmpty) {
+      return const _EmptyHint(text: "Không có kết quả");
+    }
 
-  return _ResultGrid(
-    scrollController: scrollController,
-    items: state.items,
-    loadingMore: state.status == SearchStatus.loadingMore,
-    onTapManga: widget.onTapManga,
-  );
+    // Có kết quả: hiển thị Grid + spinner ô cuối nếu đang loadMore
+    return _ResultGrid(
+      scrollController: scrollController,
+      items: state.items,
+      loadingMore: state.status == SearchStatus.loadingMore,
+      onTapManga: widget.onTapManga,
+    );
+  }
 }
 
-}
-
+// ===================================================================
+// TIỂU PHẦN UI: Status mini bên cạnh dropdown thể loại
+// - Loading / LoadingMore: spinner + text
+// - Failure: “Lỗi mạng” (đỏ)
+// - Success + rỗng có tiêu chí: “Không có kết quả”
+// - Success + có items: “N kết quả”
+// ===================================================================
 class _StatusBadgeMini extends StatelessWidget {
   final SearchState state;
   const _StatusBadgeMini({required this.state});
@@ -327,10 +363,9 @@ class _StatusBadgeMini extends StatelessWidget {
       );
     }
 
-    // không có kết quả
+    // không có kết quả (đã có tiêu chí tìm)
     if (state.items.isEmpty &&
         state.status == SearchStatus.success &&
-        // có tiêu chí tìm, mà vẫn rỗng
         (!state.query.isEmpty || state.genre != null)) {
       return Text(
         "Không có kết quả",
@@ -352,6 +387,12 @@ class _StatusBadgeMini extends StatelessWidget {
   }
 }
 
+// ===================================================================
+// TIỂU PHẦN UI: Lưới kết quả
+// - childAspectRatio 0.55 để MangaCard thoải mái chiều cao (khớp layout card).
+// - Khi loadingMore: thêm 1 ô spinner ở cuối.
+// - onTapManga: forward id ra ngoài để shell điều hướng.
+// ===================================================================
 class _ResultGrid extends StatelessWidget {
   final ScrollController scrollController;
   final List<Manga> items;
@@ -379,6 +420,7 @@ class _ResultGrid extends StatelessWidget {
       ),
       itemCount: items.length + (loadingMore ? 1 : 0),
       itemBuilder: (context, index) {
+        // Ô cuối là spinner khi loadingMore
         if (index >= items.length) {
           return const Center(
             child: CircularProgressIndicator(),
@@ -399,6 +441,9 @@ class _ResultGrid extends StatelessWidget {
   }
 }
 
+// ===================================================================
+// TIỂU PHẦN UI: Hint rỗng
+// ===================================================================
 class _EmptyHint extends StatelessWidget {
   final String text;
   const _EmptyHint({required this.text});
