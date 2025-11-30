@@ -99,13 +99,38 @@ class _HomeShellPageState extends State<HomeShellPage> {
                   child: CircularProgressIndicator(),
                 );
               }
-
+            // --- UI FALLBACK MỚI ---
               if (isError) {
-                // Hiển thị lỗi thân thiện, không lộ chi tiết kỹ thuật.
                 return Center(
-                  child: Text(
-                    state.errorMessage ?? "Lỗi tải dữ liệu",
-                    style: const TextStyle(color: Colors.white70),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.wifi_off, size: 48, color: Colors.white38),
+                      const SizedBox(height: 16),
+                      const Text(
+                        "Không tải được dữ liệu.",
+                        style: TextStyle(color: Colors.white70),
+                      ),
+                      const SizedBox(height: 8),
+                      FilledButton.icon(
+                        icon: const Icon(Icons.refresh),
+                        label: const Text("Thử lại"),
+                        onPressed: () {
+                          // Gọi sự kiện Refresh để load lại toàn bộ Home
+                          context.read<HomeBloc>().add(const HomeRefreshRequested());
+                        },
+                      ),
+                      // Hiển thị lỗi kỹ thuật nhỏ bên dưới để debug (tuỳ chọn)
+                      if (state.errorMessage != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 16),
+                          child: Text(
+                            state.errorMessage!,
+                            style: const TextStyle(fontSize: 10, color: Colors.white24),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                    ],
                   ),
                 );
               }

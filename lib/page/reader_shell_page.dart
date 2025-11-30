@@ -9,40 +9,34 @@ import '../theme/colors.dart';
 
 // bloc đọc truyện
 import 'package:reader/presentation/bloc/reader_bloc.dart';
-
 // UI view
 import 'package:reader/presentation/widgets/reader_view.dart';
-
-// Lưu tiến trình theo CHAPTER
+// Lưu tiến trình
 import 'package:reader/application/usecases/save_read_progress.dart' as reader_uc;
+
+// --- CÁC IMPORT ĐỂ FETCH CONTEXT VÀ RECOVER DATA ---
+import 'package:catalog/application/usecases/list_chapters.dart';
+import 'package:catalog/application/usecases/get_manga_detail.dart'; // NEW
+import 'package:catalog/domain/value_objects/manga_id.dart';
+import 'package:catalog/domain/entities/chapter.dart';
+import 'package:library_manga/application/usecases/get_continue_reading.dart'; // NEW: Để lấy lại data từ history cũ
 
 /// ======================================================================
 /// File: page/reader_shell_page.dart
-/// Mục đích:
-///   - “Shell” mỏng cho màn đọc truyện (Reader).
-///   - Quản lý chỉ số chapter hiện tại (currentIndex) và điều hướng Prev/Next.
-///   - Lấy ReaderBloc từ DI, load trang ảnh theo chapterId.
-///   - Ghi lại tiến trình đọc (per chapter) vào Library ngay khi vào/chuyển chapter.
-/// Dòng chảy:
-///   - Khi khởi tạo: lấy ReaderBloc từ GetIt → add(ReaderLoadChapter(currentChapterId))
-///   - Mỗi lần vào/chuyển chapter: gọi SaveReadProgress(mangaId, chapterId, chapterNumber)
-///   - ReaderView nhận callback: back, prev, next, và label chapter hiển thị.
-/// Lưu ý:
-///   - Không đọc context trong initState cho routing; chỉ dùng cho push/go trong callback.
-///   - chapterNumbers là optional, dùng để hiển thị và lưu progress “đẹp” (nếu có).
-///   - initialPageIndex giữ để tương thích API cũ, hiện không dùng.
+/// CẬP NHẬT: 
+/// 1. Auto-fetch chapter list nếu thiếu (Fix lỗi không next/prev)
+/// 2. Metadata Recovery: Nếu thiếu bìa/tên, tìm lại trong History hoặc API 
+///    trước khi lưu, tránh ghi đè dữ liệu lỗi (Fix lỗi mất bìa).
 /// ======================================================================
 class ReaderShellPage extends StatefulWidget {
   final String mangaId;
   final int currentIndex;
-  final List<String> chapters;
+  final List<String> chapters; 
 
-  // optional: để hiển thị/ghi progress đẹp
   final String mangaTitle;
   final String? coverImageUrl;
-  final List<String>? chapterNumbers;
+  final List<String>? chapterNumbers; 
 
-  // vẫn giữ tham số này cho tương thích, nhưng không dùng nữa
   final int initialPageIndex;
 
   const ReaderShellPage({
@@ -61,26 +55,128 @@ class ReaderShellPage extends StatefulWidget {
 }
 
 class _ReaderShellPageState extends State<ReaderShellPage> {
-  // Bloc render nội dung chapter (danh sách ảnh, trạng thái tải, …)
   late final ReaderBloc _bloc;
 
-  // Chỉ số chapter hiện tại trong mảng chapters
+  late List<String> _chapterIds;
+  late List<String>? _chapterNumbers;
   late int _currentIndex;
-
-  // Convenience getters
-  String get _currentChapterId => widget.chapters[_currentIndex];
-  bool get _hasPrev => _currentIndex > 0;
-  bool get _hasNext => _currentIndex < widget.chapters.length - 1;
+  
+  bool _isFetchingContext = false;
+  
+  // NEW: Trạng thái đang khôi phục metadata
+  bool _isRecoveringMetadata = false;
+  late String _currentMangaTitle;
+  late String? _currentCoverUrl;
 
   @override
   void initState() {
     super.initState();
+    _bloc = GetIt.instance<ReaderBloc>();
+    
+    _chapterIds = widget.chapters;
+    _chapterNumbers = widget.chapterNumbers;
     _currentIndex = widget.currentIndex;
-    _bloc = GetIt.instance<ReaderBloc>()
-      ..add(ReaderLoadChapter(_currentChapterId));
+    
+    _currentMangaTitle = widget.mangaTitle;
+    _currentCoverUrl = widget.coverImageUrl;
 
-    // Lưu “chương đang đọc” NGAY khi vào chapter đầu tiên
+    // KIỂM TRA METADATA: Nếu thiếu tên hoặc bìa, thực hiện khôi phục trước khi load
+    if (_isMetadataMissing()) {
+      _recoverMetadataAndLoad();
+    } else {
+      // Dữ liệu đủ -> Load ngay
+      _initLoad();
+    }
+
+    // Context check (Logic cũ)
+    if (_chapterIds.length <= 1 && widget.mangaId.isNotEmpty) {
+      _fetchFullChapterContext();
+    }
+  }
+
+  bool _isMetadataMissing() {
+    return _currentMangaTitle.isEmpty || (_currentCoverUrl?.isEmpty ?? true);
+  }
+
+  void _initLoad() {
+    // Chỉ gọi Bloc khi đã có metadata tốt nhất có thể
+    _bloc.add(ReaderLoadChapter(
+      _currentChapterId,
+      mangaId: widget.mangaId,
+      mangaTitle: _currentMangaTitle,
+      coverImageUrl: _currentCoverUrl, 
+      chapterNumber: _currentChapterNumberForSave(),
+    ));
+    
     _saveChapterProgress();
+  }
+
+  /// NEW: Khôi phục metadata từ Local History hoặc Remote API
+  Future<void> _recoverMetadataAndLoad() async {
+    setState(() => _isRecoveringMetadata = true);
+
+    try {
+      // Bước 1: Thử tìm trong Local History (để lấy lại bìa cũ nếu có)
+      final getHistory = GetIt.instance<GetContinueReading>();
+      final historyList = await getHistory();
+      final historyItem = historyList.where((e) => e.mangaId == widget.mangaId).firstOrNull;
+
+      if (historyItem != null) {
+        if (_currentMangaTitle.isEmpty) _currentMangaTitle = historyItem.mangaTitle;
+        if (_currentCoverUrl?.isEmpty ?? true) _currentCoverUrl = historyItem.coverImageUrl;
+      }
+
+      // Bước 2: Nếu vẫn thiếu, gọi API GetMangaDetail
+      if (_isMetadataMissing()) {
+        final getDetail = GetIt.instance<GetMangaDetail>();
+        final manga = await getDetail(mangaId: MangaId(widget.mangaId));
+        
+        if (_currentMangaTitle.isEmpty) _currentMangaTitle = manga.title;
+        if (_currentCoverUrl?.isEmpty ?? true) _currentCoverUrl = manga.coverImageUrl;
+      }
+    } catch (e) {
+      debugPrint("Metadata recovery failed: $e");
+    } finally {
+      if (mounted) {
+        setState(() => _isRecoveringMetadata = false);
+        // Sau khi cố gắng khôi phục (dù được hay không), tiến hành load
+        _initLoad();
+      }
+    }
+  }
+
+  Future<void> _fetchFullChapterContext() async {
+    if (!mounted) return;
+    setState(() => _isFetchingContext = true);
+    
+    try {
+      final listChaptersUC = GetIt.instance<ListChapters>();
+      final List<Chapter> chapters = await listChaptersUC(
+        mangaId: MangaId(widget.mangaId),
+        ascending: true, 
+        languageFilter: null,
+        offset: 0,
+        limit: 500, 
+      );
+
+      if (chapters.isNotEmpty && mounted) {
+        final ids = chapters.map((c) => c.id.value).toList();
+        final nums = chapters.map((c) => c.chapterNumber).toList();
+        
+        final currentId = _currentChapterId;
+        final newIndex = ids.indexOf(currentId);
+
+        setState(() {
+          _chapterIds = ids;
+          _chapterNumbers = nums;
+          _currentIndex = newIndex != -1 ? newIndex : 0;
+          _isFetchingContext = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Lỗi fetch context chapter: $e");
+      if(mounted) setState(() => _isFetchingContext = false);
+    }
   }
 
   @override
@@ -89,85 +185,102 @@ class _ReaderShellPageState extends State<ReaderShellPage> {
     super.dispose();
   }
 
-  /// Ghi tiến trình đọc theo CHAPTER vào Library.
-  /// - Sử dụng use case SaveReadProgress (được đăng ký qua DI).
-  /// - Im lặng nếu có lỗi (không làm gián đoạn trải nghiệm đọc).
+  String get _currentChapterId => _chapterIds[_currentIndex];
+  bool get _hasPrev => _currentIndex > 0;
+  bool get _hasNext => _currentIndex < _chapterIds.length - 1;
+
   void _saveChapterProgress() async {
     try {
       final saver = GetIt.instance<reader_uc.SaveReadProgress>();
+      // Double check lần cuối trước khi lưu
+      final String? safeCoverUrl = (_currentCoverUrl?.isEmpty ?? true) ? null : _currentCoverUrl;
+
       await saver(
         mangaId: widget.mangaId,
-        mangaTitle: widget.mangaTitle,
-        coverImageUrl: widget.coverImageUrl,
+        mangaTitle: _currentMangaTitle,
+        coverImageUrl: safeCoverUrl, 
         chapterId: _currentChapterId,
         chapterNumber: _currentChapterNumberForSave(),
       );
-    } catch (_) {
-      // im lặng
-    }
+    } catch (_) {}
   }
 
-  /// Lấy “chapterNumber” để lưu/hiển thị:
-  /// - Ưu tiên lấy từ widget.chapterNumbers nếu có và hợp lệ
-  /// - Nếu không có → fallback về chapterId (để không trống)
   String _currentChapterNumberForSave() {
-    if (widget.chapterNumbers != null &&
+    if (_chapterNumbers != null &&
         _currentIndex >= 0 &&
-        _currentIndex < (widget.chapterNumbers!.length)) {
-      final num = widget.chapterNumbers![_currentIndex];
+        _currentIndex < (_chapterNumbers!.length)) {
+      final num = _chapterNumbers![_currentIndex];
       if (num.isNotEmpty) return num;
     }
-    return _currentChapterId;
+    return ""; 
   }
 
-  /// Chuẩn hóa nhãn hiển thị trên toolbar:
-  /// - Nếu có chapterNumbers → “Ch. <num>”
-  /// - Ngược lại → “Chapter <chapterId>”
   String _buildChapterLabel() {
-    if (widget.chapterNumbers != null &&
+    if (_isFetchingContext && _chapterIds.length <= 1) return "Loading list...";
+
+    if (_chapterNumbers != null &&
         _currentIndex >= 0 &&
-        _currentIndex < (widget.chapterNumbers!.length)) {
-      final num = widget.chapterNumbers![_currentIndex];
+        _currentIndex < (_chapterNumbers!.length)) {
+      final num = _chapterNumbers![_currentIndex];
       if (num.isNotEmpty) return "Ch. $num";
     }
-    return "Chapter ${_currentChapterId}";
+    return "Chapter";
   }
 
-  /// Quay về trang chi tiết Manga đang đọc
-  void _handleBackToManga() => context.go("/manga/${widget.mangaId}");
+  void _handleBackToManga() {
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go("/manga/${widget.mangaId}");
+    }
+  }
 
-  /// Chuyển về chương trước:
-  /// - Nếu không có prev → báo SnackBar thân thiện
-  /// - Nếu có: giảm index, load chapter mới, lưu progress
   void _handlePrevChapter() {
     if (!_hasPrev) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Đang ở chương đầu rồi")),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Đang ở chương đầu rồi")));
       return;
     }
     setState(() => _currentIndex -= 1);
-    _bloc.add(ReaderLoadChapter(_currentChapterId));
+    
+    // Dùng _currentMangaTitle và _currentCoverUrl đã được khôi phục/cache
+    _bloc.add(ReaderLoadChapter(
+      _currentChapterId,
+      mangaId: widget.mangaId,
+      mangaTitle: _currentMangaTitle,
+      coverImageUrl: _currentCoverUrl, 
+      chapterNumber: _currentChapterNumberForSave(), 
+    ));
     _saveChapterProgress();
   }
 
-  /// Chuyển sang chương kế:
-  /// - Nếu hết chương → báo SnackBar thân thiện
-  /// - Nếu còn: tăng index, load chapter mới, lưu progress
   void _handleNextChapter() {
     if (!_hasNext) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Hết chương rồi")),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Hết chương rồi")));
       return;
     }
     setState(() => _currentIndex += 1);
-    _bloc.add(ReaderLoadChapter(_currentChapterId));
+    
+    // Dùng _currentMangaTitle và _currentCoverUrl đã được khôi phục/cache
+    _bloc.add(ReaderLoadChapter(
+      _currentChapterId,
+      mangaId: widget.mangaId,
+      mangaTitle: _currentMangaTitle,
+      coverImageUrl: _currentCoverUrl,
+      chapterNumber: _currentChapterNumberForSave(),
+    ));
     _saveChapterProgress();
   }
 
   @override
   Widget build(BuildContext context) {
+    // Nếu đang khôi phục metadata, hiện loading để tránh user thấy màn hình chưa sẵn sàng
+    if (_isRecoveringMetadata) {
+      return const Scaffold(
+        backgroundColor: AppColors.background,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(

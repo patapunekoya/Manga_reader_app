@@ -103,14 +103,27 @@ Future<void> bootstrap() async {
   //    - BaseOptions cấu hình timeout, baseUrl của MangaDex API.
   //    - registerLazySingleton: chỉ tạo khi lần đầu cần, tiết kiệm startup time.
   if (!sl.isRegistered<Dio>()) {
-    sl.registerLazySingleton<Dio>(() => Dio(
-          BaseOptions(
-            baseUrl: 'https://api.mangadex.org',
-            connectTimeout: const Duration(seconds: 10),
-            receiveTimeout: const Duration(seconds: 20),
-          ),
-        ));
-  }
+      sl.registerLazySingleton<Dio>(() => Dio(
+            BaseOptions(
+              baseUrl: 'https://api.mangadex.org',
+              // Tăng timeout lên một chút để an toàn
+              connectTimeout: const Duration(seconds: 15),
+              receiveTimeout: const Duration(seconds: 20),
+              
+              headers: {
+                // 1. MangaDex YÊU CẦU User-Agent hợp lệ
+                'User-Agent': 'MangaReaderApp/0.0.1 (flutter)',
+                
+                // 2. Yêu cầu server đóng kết nối sau khi xong, tránh giữ (Keep-Alive) gây lỗi
+                'Connection': 'close', 
+              },
+              
+              // 3. TẮT persistentConnection: Buộc tạo kết nối mới cho mỗi request.
+              // Đây là liều thuốc đặc trị cho lỗi "Connection closed before full header".
+              persistentConnection: false, 
+            ),
+          ));
+    }
 
   // 4) Đăng ký Datasource cho từng module
   //    - Local DS của Library: quản lý Hive box cho favorites/progress
