@@ -5,6 +5,9 @@ import 'package:go_router/go_router.dart';
 
 import '../theme/colors.dart';
 
+// THÊM: Import Auth Module
+import 'package:auth/auth.dart';
+
 // Bloc từ module library_manga
 import 'package:library_manga/presentation/bloc/favorites_bloc.dart';
 import 'package:library_manga/presentation/bloc/history_bloc.dart';
@@ -19,8 +22,7 @@ import 'package:library_manga/domain/entities/favorite_item.dart';
 
 /// ======================================================================
 /// File: page/library_shell_page.dart
-/// CẬP NHẬT: Thêm logic "await" khi điều hướng để tự động reload dữ liệu
-/// khi quay lại.
+/// CẬP NHẬT: Thêm logic kiểm tra trạng thái Authentication
 /// ======================================================================
 class LibraryShellPage extends StatefulWidget {
   const LibraryShellPage({super.key});
@@ -30,6 +32,7 @@ class LibraryShellPage extends StatefulWidget {
 }
 
 class _LibraryShellPageState extends State<LibraryShellPage> {
+  // BLoC cho dữ liệu cá nhân (chỉ nên load khi đã Auth)
   late final FavoritesBloc _favoritesBloc;
   late final HistoryBloc _historyBloc;
 
@@ -37,8 +40,18 @@ class _LibraryShellPageState extends State<LibraryShellPage> {
   void initState() {
     super.initState();
     final sl = GetIt.instance;
-    _favoritesBloc = sl<FavoritesBloc>()..add(const FavoritesLoadRequested());
-    _historyBloc = sl<HistoryBloc>()..add(const HistoryLoadRequested());
+    // Khởi tạo BLoC, nhưng chỉ add sự kiện Load khi đã Auth
+    _favoritesBloc = sl<FavoritesBloc>();
+    _historyBloc = sl<HistoryBloc>();
+    
+    // NOTE: Chúng ta không add LoadRequested ở đây. Thay vào đó, chúng ta
+    // sẽ gọi chúng trong build() nếu user đã đăng nhập.
+  }
+
+  // Tải lại dữ liệu (chỉ được gọi khi đã xác thực)
+  void _loadLibraryData() {
+    _favoritesBloc.add(const FavoritesLoadRequested());
+    _historyBloc.add(const HistoryLoadRequested());
   }
 
   @override
@@ -48,28 +61,25 @@ class _LibraryShellPageState extends State<LibraryShellPage> {
     super.dispose();
   }
 
-  /// CẬP NHẬT: Dùng async/await để đợi người dùng quay lại rồi reload History
+  /// Dùng async/await để đợi người dùng quay lại rồi reload History
   Future<void> _resumeReadingFromHistory({
     required String mangaId,
     required String chapterId,
   }) async {
-    // Chờ cho đến khi người dùng thoát khỏi màn hình MangaDetail/Reader
     await context.push(
       "/manga/$mangaId?from=library&resume_chapter=$chapterId"
     );
     
-    // Sau khi quay lại, reload ngay lập tức để cập nhật tiến độ mới
     if (mounted) {
       _historyBloc.add(const HistoryLoadRequested());
+      _favoritesBloc.add(const FavoritesLoadRequested()); 
     }
   }
 
-  /// CẬP NHẬT: Dùng async/await để đợi người dùng quay lại rồi reload Favorites/History
-  /// (Vì user có thể bỏ thích hoặc đọc truyện bên trong trang detail)
+  /// Dùng async/await để đợi người dùng quay lại rồi reload Favorites/History
   Future<void> _openMangaDetail(String mangaId) async {
     await context.push("/manga/$mangaId?from=library");
     
-    // Quay lại thì refresh cả 2 cho chắc ăn
     if (mounted) {
       _favoritesBloc.add(const FavoritesLoadRequested());
       _historyBloc.add(const HistoryLoadRequested());
@@ -98,7 +108,6 @@ class _LibraryShellPageState extends State<LibraryShellPage> {
       coverImageUrl: item.coverImageUrl,
     );
 
-    // Reload ngay sau khi xóa
     _favoritesBloc.add(const FavoritesLoadRequested());
     
     if (mounted) {
@@ -131,20 +140,77 @@ class _LibraryShellPageState extends State<LibraryShellPage> {
     }
   }
 
+  // NEW: Widget hiển thị khi chưa đăng nhập
+  Widget _buildUnauthorizedView(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.lock_outline,
+              color: Colors.white70,
+              size: 48,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              "Bạn phải đăng nhập để mở khóa thư viện",
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white70, fontSize: 16),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () {
+                // Chuyển hướng tới trang Đăng nhập
+                context.go('/login');
+              },
+              icon: const Icon(Icons.login),
+              label: const Text("Đăng nhập"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF7C4DFF), // Màu accent
+                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // LẮNG NGHE TRẠNG THÁI XÁC THỰC
+    final authStatus = context.watch<AuthStatusBloc>().state.status;
+    final isAuthenticated = authStatus == AuthStatus.authenticated;
+
+    // Nếu chưa đăng nhập, hiển thị giao diện khóa
+    if (!isAuthenticated) {
+      return _buildUnauthorizedView(context);
+    }
+    
+    // Khi đã đăng nhập, tự động kích hoạt tải dữ liệu lần đầu (nếu cần)
+    // NOTE: Sử dụng BlocListener hoặc didChangeDependencies để tối ưu hơn,
+    // nhưng đây là cách đơn giản nhất để đảm bảo dữ liệu được load sau khi login.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Chỉ add event nếu BLoC đang ở trạng thái Initial
+      if (_historyBloc.state.status == HistoryStatus.initial) {
+        _loadLibraryData(); 
+      }
+    });
+
+
+    // --- CODE HIỂN THỊ THƯ VIỆN BÌNH THƯỜNG ---
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
         bottom: false,
         child: RefreshIndicator(
-          // Kéo xuống để refresh cả trang (Feature bổ sung tiện lợi)
           onRefresh: () async {
             _favoritesBloc.add(const FavoritesLoadRequested());
             _historyBloc.add(const HistoryLoadRequested());
           },
           child: CustomScrollView(
-            // Thêm physics để RefreshIndicator hoạt động mượt mà
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
               // ====== HEADER: YÊU THÍCH ======

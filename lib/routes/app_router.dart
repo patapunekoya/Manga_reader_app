@@ -1,45 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:get_it/get_it.dart'; 
+import 'package:auth/auth.dart'; 
 
 import '../page/main_shell.dart';
 import '../page/manga_detail_shell_page.dart';
 import '../page/reader_shell_page.dart';
 
+
 /// ===========================================================
 /// File: routes/app_router.dart
-/// Mục đích:
-///   - Khai báo và cấu hình GoRouter cho toàn ứng dụng.
-///   - Định nghĩa các tuyến đường (route) cấp cao:
-///       • /home, /search, /library: điều hướng vào MainShell theo tab index,
-///         không dùng transition vì hiệu ứng chuyển tab do chính MainShell quản lý (PageView).
-///       • /manga/:mangaId: màn chi tiết manga, đẩy chồng lên shell với slide-in.
-///       • /reader/:chapterId: màn đọc truyện full-screen, slide-in.
-/// Điểm vào/ra:
-///   - Input: không nhận DI trực tiếp; được tạo ở bootstrap và truyền vào MaterialApp.router.
-///   - Output: [GoRouter] cấu hình hoàn chỉnh qua getter [config].
-/// Phụ thuộc:
-///   - go_router: cung cấp declarative routing API.
-///   - MainShell: chứa PageView + BottomNav cho 3 tab chính.
-///   - MangaDetailShellPage: hiển thị chi tiết manga, danh sách chương.
-///   - ReaderShellPage: viewer ảnh theo chương, hỗ trợ next/prev, resume.
-/// Lưu ý & Quy ước:
-///   - Các route tab sử dụng NoTransitionPage để không “đè” animation nội bộ của MainShell.
-///   - _slidePage: helper tạo slide transition thống nhất cho các màn đẩy lên.
-///   - Đọc query/extra an toàn: luôn kiểm tra null/type trước khi cast, có fallback để tránh crash.
-///   - URL params:
-///       • /manga/:mangaId?from=home|search|library
-///       • /reader/:chapterId?mangaId=...&page=...&mangaTitle=...&coverImageUrl=...
-///     + state.extra có thể chứa:
-///         { chapters: List<String>, chapterNumbers: List, currentIndex: int }
+/// CẬP NHẬT: Xóa refreshListenable/redirect để tránh lỗi ép kiểu runtime.
 /// ===========================================================
 class AppRouter {
   AppRouter();
 
   // -----------------------------------------------------------
-  // Helper: tạo CustomTransitionPage với hiệu ứng slide-in.
-  // - [begin]: vector Offset điểm bắt đầu của slide. Mặc định trượt từ phải sang (1, 0).
-  // - Trả về: CustomTransitionPage bọc child với SlideTransition + CurveTween mượt.
-  // Lưu ý: Không tham chiếu context ngoài phạm vi transitionsBuilder.
+  // Helper: tạo CustomTransitionPage với hiệu ứng slide-in. (GIỮ NGUYÊN)
   // -----------------------------------------------------------
   CustomTransitionPage<T> _slidePage<T>({
     required Widget child,
@@ -60,15 +37,49 @@ class AppRouter {
 
   // -----------------------------------------------------------
   // GoRouter cấu hình chính cho app.
-  // - initialLocation: '/home' để luôn vào tab Home khi khởi động.
-  // - routes: định nghĩa mapping path -> Page builder.
-  //   • Tabs: dùng NoTransitionPage để giữ animation của MainShell.
-  //   • MangaDetail / Reader: dùng _slidePage cho cảm giác đẩy chồng.
   // -----------------------------------------------------------
   late final GoRouter config = GoRouter(
+    // XÓA: refreshListenable: _getAuthBlocListenable(),
+    
     initialLocation: '/home',
+    
+    // XÓA: redirect: (context, state) { ... }
+    redirect: (context, state) {
+        // HÀM REDIRECT NÀY CHỈ CÒN ĐỂ XỬ LÝ VIỆC ĐI TỚI CÁC TRANG CẦN BẢO VỆ NẾU CÓ.
+        // NHƯNG LOGIC CHÍNH ĐÃ CHUYỂN QUA APP.DART/MAIN.DART
+        
+        // Bạn có thể giữ lại logic này nếu muốn Router tự xử lý việc chuyển hướng sau Login/Register thành công
+        final authBloc = GetIt.instance<AuthStatusBloc>();
+        final isAuthenticated = authBloc.state.status == AuthStatus.authenticated;
+        final path = state.uri.path;
+        final isLoggingIn = path == '/login';
+        final isRegistering = path == '/register';
+
+        // Nếu đã đăng nhập và đang cố gắng truy cập trang Auth, chuyển về Home
+        if (isAuthenticated && (isLoggingIn || isRegistering)) {
+            return '/home';
+        }
+        
+        // Nếu không có lỗi, tiếp tục
+        return null; 
+    },
+    
     routes: [
-      // ================== TABS (trong MainShell + PageView) ==================
+      // ================== AUTH ROUTES (MỚI) ==================
+      GoRoute(
+        path: '/login',
+        pageBuilder: (context, state) => const NoTransitionPage(
+          child: LoginPage(), 
+        ),
+      ),
+      GoRoute(
+        path: '/register',
+        pageBuilder: (context, state) => const NoTransitionPage(
+          child: LoginPage(), 
+        ),
+      ),
+
+      // ================== TABS ==================
       GoRoute(
         path: '/home',
         pageBuilder: (context, state) => const NoTransitionPage(
@@ -88,36 +99,35 @@ class AppRouter {
         ),
       ),
 
-      // ================== MANGA DETAIL ==================
-      // Ý tưởng:
-      //   - Đọc :mangaId từ pathParameters.
-      //   - Đọc query ?from=home|search|library để khi back() trả về đúng tab nguồn.
-      //   - Dùng slide-in để “đẩy” trang chi tiết chồng lên shell hiện tại.
+      // THÊM ROUTE MỚI
+      GoRoute(
+        path: '/profile',
+        pageBuilder: (context, state) => const NoTransitionPage(
+          child: MainShell(currentIndex: 3), // Tab thứ 4
+        ),
+      ),
+
+      // ================== MANGA DETAIL (ĐÃ CẬP NHẬT) ==================
       GoRoute(
         path: '/manga/:mangaId',
         pageBuilder: (context, state) {
           final mangaId = state.pathParameters['mangaId'] ?? '';
-          // Nguồn điều hướng: mặc định 'home' nếu không truyền.
           final origin =
               (state.uri.queryParameters['from'] ?? 'home').toLowerCase();
+          
+          final resumeChapterId = state.uri.queryParameters['resume_chapter'];
 
           return _slidePage(
             child: MangaDetailShellPage(
               mangaId: mangaId,
               origin: origin,
+              resumeChapterId: resumeChapterId, 
             ),
           );
         },
       ),
 
-      // ================== READER ==================
-      // Ý tưởng:
-      //   - Đọc :chapterId từ path; query chứa mangaId, page (int), title, cover.
-      //   - state.extra có thể cung cấp chapters (list chapterId), chapterNumbers (số chương),
-      //     và currentIndex (vị trí chapter hiện tại trong list).
-      //   - Có fallback an toàn:
-      //       • Nếu extra null hoặc thiếu, tự tạo danh sách 1 phần tử để tránh crash.
-      //       • Nếu currentIndex không tìm thấy hoặc âm, đưa về 0.
+      // ================== READER (GIỮ NGUYÊN) ==================
       GoRoute(
         path: '/reader/:chapterId',
         pageBuilder: (context, state) {

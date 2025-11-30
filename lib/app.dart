@@ -1,34 +1,18 @@
 // lib/app.dart
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:get_it/get_it.dart';
+import 'package:auth/auth.dart'; // Import Auth Module
+
 import 'routes/app_router.dart';
 import 'theme/app_theme.dart';
+// Note: Cần đảm bảo file theme/colors.dart có thể được gọi nếu dùng theme/app_theme.dart
 
-/// ------------------------------------------------------------
-/// File: app.dart
-/// Vai trò chính:
-///   - Khởi tạo "App shell" của ứng dụng bằng MaterialApp.router.
-///   - Gắn cấu hình điều hướng (router) đã được chuẩn bị ở AppRouter.
-///   - Thiết lập theme (light/dark) và chiến lược ThemeMode cho toàn app.
-/// Điểm vào/ra:
-///   - Input: một thể hiện [AppRouter] đã được cấu hình (inject từ bootstrap/DI).
-///   - Output: cây widget root của ứng dụng (MaterialApp.router).
-/// Phụ thuộc:
-///   - [AppRouter] (routes/app_router.dart): cung cấp [router.config] cho navigation.
-///   - [buildAppTheme], [buildDarkTheme] (theme/app_theme.dart): cung cấp ThemeData.
-/// Quy ước & Lưu ý:
-///   - `themeMode` hiện đặt là [ThemeMode.dark] để luôn chạy giao diện dark.
-///     Nếu muốn theo hệ thống, đổi sang [ThemeMode.system].
-///   - Không khởi tạo DI trong file này. Tất cả DI phải diễn ra ở bootstrap trước đó.
-///   - Đây là lớp "vỏ" (shell) mỏng, không chứa logic nghiệp vụ.
-/// ------------------------------------------------------------
 class MangaReaderApp extends StatelessWidget {
-  /// Router cấu hình sẵn (GoRouter hoặc wrapper) được inject từ bên ngoài.
-  /// Lý do inject: tách biệt App shell khỏi chi tiết navigation, dễ test và thay thế.
   final AppRouter router;
 
-  /// [MangaReaderApp] là root widget của ứng dụng.
-  /// - [router] bắt buộc: truyền vào từ bootstrap sau khi đã đăng ký tất cả routes/guards.
   const MangaReaderApp({
     super.key,
     required this.router,
@@ -36,27 +20,58 @@ class MangaReaderApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // MaterialApp.router:
-    //   - Bản MaterialApp dùng Router API mới (Navigator 2.0).
-    //   - Nhận routerConfig từ AppRouter để điều hướng dựa trên declarative routing.
-    return MaterialApp.router(
-      // Tắt banner "DEBUG" ở góc màn hình khi build debug.
-      debugShowCheckedModeBanner: false,
+    // FIX: AuthStatusBloc must be provided at the highest level possible (Root)
+    return BlocProvider(
+      // Lấy Singleton instance của AuthStatusBloc từ GetIt (đã đăng ký ở bootstrap)
+      create: (context) => GetIt.instance<AuthStatusBloc>(), 
+      child: _GlobalRedirectWrapper(router: router),
+    );
+  }
+}
 
-      // Tên ứng dụng (dùng cho task switcher, Android Recents, v.v.)
-      title: 'Manga Reader',
+// Widget mới để xử lý logic chuyển hướng dựa trên trạng thái BLoC
+class _GlobalRedirectWrapper extends StatelessWidget {
+  final AppRouter router;
 
-      // Theme sáng mặc định (nếu cần). Ở đây vẫn khai báo đầy đủ để tái dụng sau này.
-      theme: buildAppTheme(),
+  const _GlobalRedirectWrapper({required this.router});
 
-      // Theme tối: đang là theme chính của app.
-      darkTheme: buildDarkTheme(),
+  // HÀM TIỆN ÍCH MỚI: Lấy đường dẫn hiện tại (location)
+  String _getCurrentLocation() {
+    // Truy cập RouteInformationProvider để lấy location an toàn
+    final routeInformation = router.config.routeInformationProvider.value;
+    return routeInformation.location ?? '/';
+  }
 
-      // Chế độ theme: ép dùng dark. Đổi sang ThemeMode.system nếu muốn theo hệ thống.
-      themeMode: ThemeMode.dark,
-
-      // Cấu hình router đã chuẩn bị từ AppRouter (định nghĩa routes, redirect, observers…)
-      routerConfig: router.config,
+  @override
+  Widget build(BuildContext context) {
+    // 2. BlocListener: Lắng nghe trạng thái và kích hoạt chuyển hướng
+    return BlocListener<AuthStatusBloc, AuthStatusState>(
+      listener: (context, state) {
+        // Lấy đường dẫn hiện tại một cách an toàn
+        final currentPath = _getCurrentLocation(); 
+        
+        final isLibraryProtected = currentPath.startsWith('/library');
+        
+        // Logic redirect chính
+        if (state.status == AuthStatus.unauthenticated) {
+            // Khi log out, chuyển về Login (nếu không ở Login/Register)
+            if (!currentPath.startsWith('/login') && !currentPath.startsWith('/register')) {
+                router.config.go('/login');
+            }
+        } else if (state.status == AuthStatus.authenticated) {
+            // Khi login thành công, chuyển về Home (hoặc Library nếu đó là trang bị chặn)
+            final targetPath = isLibraryProtected ? currentPath : '/home';
+            router.config.go(targetPath);
+        }
+      },
+      child: MaterialApp.router(
+        debugShowCheckedModeBanner: false,
+        title: 'Manga Reader',
+        theme: buildAppTheme(),
+        darkTheme: buildDarkTheme(),
+        themeMode: ThemeMode.dark,
+        routerConfig: router.config,
+      ),
     );
   }
 }

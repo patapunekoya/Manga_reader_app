@@ -6,6 +6,7 @@ import '../theme/colors.dart';
 import 'home_shell_page.dart';
 import 'search_shell_page.dart';
 import 'library_shell_page.dart';
+import 'profile_shell_page.dart';
 
 /// ======================================================================
 /// File: page/main_shell.dart
@@ -97,7 +98,7 @@ class _MainShellState extends State<MainShell> {
       backgroundColor: AppColors.background,
       body: PageView.builder(
         controller: _controller,
-        itemCount: 3,
+        itemCount: 4,
         physics: const BouncingScrollPhysics(), // vẫn cho vuốt mượt
         allowImplicitScrolling: false,          // đừng render trang cạnh
         padEnds: false,
@@ -113,8 +114,12 @@ class _MainShellState extends State<MainShell> {
             case 1:
               return _buildLazy(index: 1, child: const SearchShellPage());
             case 2:
-            default:
               return _buildLazy(index: 2, child: const LibraryShellPage());
+            case 3:
+              // THÊM: Case 3 cho Profile
+              return _buildLazy(index: 3, child: const ProfileShellPage());
+            default:
+              return const SizedBox.shrink(); 
           }
         },
       ),
@@ -182,6 +187,12 @@ class _BottomNav extends StatelessWidget {
           selectedIcon: Icon(Icons.collections_bookmark),
           label: 'Thư viện',
         ),
+      NavigationDestination(
+          icon: Icon(Icons.person_outline), // Icon Tài khoản
+          selectedIcon: Icon(Icons.person),
+          label: 'Tài khoản',
+        ),
+
       ],
     );
   }

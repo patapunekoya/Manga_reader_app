@@ -1,42 +1,17 @@
 // lib/bootstrap.dart
-//
-// PURPOSE / CHỨC NĂNG TỔNG QUÁT
-// - Hàm bootstrap() chịu trách nhiệm khởi động toàn bộ hạ tầng ứng dụng trước khi runApp:
-//   + Khởi tạo Flutter binding, Hive (local storage)
-//   + Tạo và cấu hình GetIt (DI container) thông qua setupLocator()
-//   + Đăng ký mọi DataSource, Repository, UseCase, BLoC theo mô-đun
-//   + Mở các Hive box cần dùng (ở đây là của module Library)
-// - Tách phần khởi động nặng/bất đồng bộ ra khỏi main.dart để main.js gọn và an toàn.
-//
-// LƯU Ý KIẾN TRÚC
-// - DI theo GetIt: "đăng ký trước, dùng sau". Router, UI, Bloc... lấy phụ thuộc qua GetIt.
-// - Mỗi nhóm chức năng (HOME / LIBRARY / DISCOVERY / CATALOG / READER) có: datasource -> repository -> usecase -> bloc.
-// - Tất cả đều được “wire” ở đây để đảm bảo chuỗi phụ thuộc đầy đủ trước khi UI chạy.
-//
-// THỨ TỰ KHỞI ĐỘNG BÊN TRONG bootstrap()
-// 1) ensureInitialized + Hive.initFlutter()
-// 2) setupLocator() để đảm bảo instance GetIt sẵn sàng
-// 3) Đăng ký Dio (HTTP core) dùng chung cho các remote DS
-// 4) Đăng ký DataSource (local/remote) theo mô-đun
-// 5) Mở Hive box (sau khi DS local đã đăng ký)
-// 6) Đăng ký Repository (phụ thuộc DS)
-// 7) Đăng ký UseCase (phụ thuộc Repo)
-// 8) Đăng ký Bloc factory (phụ thuộc UseCase)
-// -> Sau bootstrap() thì UI có thể tự tin resolve mọi thứ từ GetIt.
-//
-// MẸO DEBUG / BẢO TRÌ
-// - isRegistered<T>() giúp tránh double-register khi hot reload.
-// - Nếu muốn log chuỗi khởi động, có thể thêm print/log nhỏ ở mỗi cụm.
-// - Khi cập nhật API baseUrl, đổi tại Dio(BaseOptions(...)) duy nhất ở đây.
-//
-// -----------------------------------------------------------------------------------------
 
 import 'package:flutter/widgets.dart';
 import 'package:get_it/get_it.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:dio/dio.dart';
+// THÊM: Imports cho Firebase
+import 'package:cloud_firestore/cloud_firestore.dart'; 
 
 import 'di/locator.dart';
+
+// ===== AUTH (MỚI) =====
+import 'package:auth/auth.dart';
+import 'package:auth/domain/repositories/auth_repository.dart'; // Import Auth Repository
 
 // ===== HOME =====
 import 'package:home/presentation/bloc/home_bloc.dart';
@@ -52,9 +27,11 @@ import 'package:library_manga/presentation/bloc/favorites_bloc.dart';
 import 'package:library_manga/domain/repositories/library_repository.dart';
 import 'package:library_manga/infrastructure/repositories/library_repository_impl.dart';
 import 'package:library_manga/infrastructure/datasources/library_local_ds.dart';
+// THÊM: Import Firestore DS
+import 'package:library_manga/infrastructure/datasources/library_firestore_ds.dart';
+
 
 // ===== DISCOVERY =====
-// Phần khám phá (trending, latest) — remote only
 import 'package:discovery/application/usecases/get_trending.dart';
 import 'package:discovery/application/usecases/get_latest_updates.dart';
 import 'package:discovery/presentation/bloc/discovery_bloc.dart';
@@ -63,7 +40,6 @@ import 'package:discovery/infrastructure/repositories/discovery_repository_impl.
 import 'package:discovery/infrastructure/datasources/discovery_remote_ds.dart';
 
 // ===== CATALOG =====
-// Phần danh mục (search, detail, list chapters) — remote + optional local cache
 import 'package:catalog/application/usecases/search_manga.dart';
 import 'package:catalog/application/usecases/get_manga_detail.dart';
 import 'package:catalog/application/usecases/list_chapters.dart';
@@ -75,7 +51,6 @@ import 'package:catalog/infrastructure/datasources/catalog_remote_ds.dart';
 import 'package:catalog/infrastructure/datasources/catalog_local_ds.dart';
 
 // ===== READER =====
-// Phần đọc truyện (load trang, prefetch, report lỗi ảnh)
 import 'package:reader/application/usecases/get_chapter_pages.dart';
 import 'package:reader/application/usecases/prefetch_pages.dart';
 import 'package:reader/application/usecases/report_image_error.dart';
@@ -84,53 +59,59 @@ import 'package:reader/domain/repositories/reader_repository.dart';
 import 'package:reader/infrastructure/repositories/reader_repository_impl.dart';
 import 'package:reader/infrastructure/datasources/reader_remote_ds.dart';
 
-// Usecase lưu tiến trình đọc (đặt trong module reader, nhưng phụ thuộc LibraryRepository)
+// Usecase lưu tiến trình đọc
 import 'package:reader/application/usecases/save_read_progress.dart' as reader_uc;
 
+
+
 Future<void> bootstrap() async {
-  // Bắt buộc: đảm bảo binding sẵn sàng cho mọi thao tác (đặc biệt là async, plugin, Hive)
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1) Khởi tạo Hive (Local key-value DB) cho toàn app
   await Hive.initFlutter();
 
-  // 2) Chuẩn bị DI container (GetIt)
-  //    setupLocator() chỉ đảm bảo GetIt.instance sẵn, có thể dùng để tách init theo module trong tương lai.
   setupLocator();
   final sl = GetIt.instance;
+  
+  // ==========================================================
+  // ĐĂNG KÝ MODULE AUTH (MỚI)
+  // ==========================================================
+  try {
+      if (initAuthModule != null) { 
+          initAuthModule(sl);
+      }
+  } catch (e) {
+      debugPrint("Error initializing Auth Module DI: $e");
+  }
+  // ==========================================================
+
 
   // 3) Core HTTP — Dio dùng chung
-  //    - BaseOptions cấu hình timeout, baseUrl của MangaDex API.
-  //    - registerLazySingleton: chỉ tạo khi lần đầu cần, tiết kiệm startup time.
   if (!sl.isRegistered<Dio>()) {
       sl.registerLazySingleton<Dio>(() => Dio(
             BaseOptions(
               baseUrl: 'https://api.mangadex.org',
-              // Tăng timeout lên một chút để an toàn
               connectTimeout: const Duration(seconds: 15),
               receiveTimeout: const Duration(seconds: 20),
               
               headers: {
-                // 1. MangaDex YÊU CẦU User-Agent hợp lệ
                 'User-Agent': 'MangaReaderApp/0.0.1 (flutter)',
-                
-                // 2. Yêu cầu server đóng kết nối sau khi xong, tránh giữ (Keep-Alive) gây lỗi
                 'Connection': 'close', 
               },
-              
-              // 3. TẮT persistentConnection: Buộc tạo kết nối mới cho mỗi request.
-              // Đây là liều thuốc đặc trị cho lỗi "Connection closed before full header".
               persistentConnection: false, 
             ),
           ));
     }
 
   // 4) Đăng ký Datasource cho từng module
-  //    - Local DS của Library: quản lý Hive box cho favorites/progress
-  //    - Remote DS của Discovery/Catalog/Reader: gọi API qua Dio
   if (!sl.isRegistered<LibraryLocalDataSource>()) {
     sl.registerLazySingleton<LibraryLocalDataSource>(() => LibraryLocalDataSource());
   }
+  // THÊM: Đăng ký Firestore DS
+  if (!sl.isRegistered<LibraryFirestoreDataSource>()) {
+    // FirebaseFirestore.instance phải có sẵn sau khi Firebase.initializeApp() chạy trong main.dart
+    sl.registerLazySingleton<LibraryFirestoreDataSource>(() => LibraryFirestoreDataSource(FirebaseFirestore.instance));
+  }
+  
   if (!sl.isRegistered<DiscoveryRemoteDataSource>()) {
     sl.registerLazySingleton<DiscoveryRemoteDataSource>(() => DiscoveryRemoteDataSource(sl<Dio>()));
   }
@@ -148,8 +129,13 @@ Future<void> bootstrap() async {
   await sl<LibraryLocalDataSource>().init();
 
   // 6) Repository — ghép DataSource vào tầng domain
+  // CẬP NHẬT: LibraryRepositoryImpl MỚI cần 3 dependencies
   if (!sl.isRegistered<LibraryRepository>()) {
-    sl.registerLazySingleton<LibraryRepository>(() => LibraryRepositoryImpl(sl<LibraryLocalDataSource>()));
+    sl.registerLazySingleton<LibraryRepository>(() => LibraryRepositoryImpl(
+        sl<LibraryLocalDataSource>(),
+        sl<AuthRepository>(), // Cần AuthRepository từ Module Auth
+        sl<LibraryFirestoreDataSource>(), // Cần Firestore DS
+    ));
   }
   if (!sl.isRegistered<DiscoveryRepository>()) {
     sl.registerLazySingleton<DiscoveryRepository>(() => DiscoveryRepositoryImpl(sl<DiscoveryRemoteDataSource>()));
@@ -165,7 +151,6 @@ Future<void> bootstrap() async {
   }
 
   // 7) Usecases — business logic đơn nhiệm, tái sử dụng
-  // LIBRARY
   if (!sl.isRegistered<GetContinueReading>()) {
     sl.registerLazySingleton<GetContinueReading>(() => GetContinueReading(sl<LibraryRepository>()));
   }
@@ -222,7 +207,6 @@ Future<void> bootstrap() async {
   }
 
   // 8) Bloc factories — mỗi lần resolve sẽ tạo instance mới “sạch”
-  //    Ưu tiên registerFactory cho Bloc để tránh giữ state cũ ngoài ý muốn.
   if (!sl.isRegistered<HistoryBloc>()) {
     sl.registerFactory<HistoryBloc>(() => HistoryBloc(
           getContinueReading: sl<GetContinueReading>(),

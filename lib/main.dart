@@ -5,14 +5,19 @@
 // - Thực hiện khởi động hạ tầng (bootstrap) trước, sau đó khởi tạo router và runApp.
 //
 // THỨ TỰ KHỞI ĐỘNG
-// 1) await bootstrap();   -> đảm bảo tất cả dependency đã sẵn sàng
-// 2) final router = ...;  -> tạo GoRouter sau khi DI đã có đủ binding
-// 3) runApp(...)          -> bắn ứng dụng lên cây widget
+// 1) await Firebase.initializeApp() -> Cần chạy trước mọi thứ
+// 2) await bootstrap();             -> đảm bảo tất cả dependency đã sẵn sàng
+// 3) final router = ...;            -> tạo GoRouter sau khi DI đã có đủ binding
+// 4) runApp(...)                    -> bắn ứng dụng lên cây widget
 //
 
 
 import 'dart:async';
 import 'package:flutter/material.dart';
+
+// THÊM: Firebase Core và Options
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart'; // File này được tạo tự động bởi flutterfire configure
 
 import 'bootstrap.dart';
 import 'routes/app_router.dart';
@@ -21,10 +26,18 @@ import 'app.dart';
 void main() {
   // Bắt lỗi async toàn cục (tuỳ chọn, giúp debug/log ổn hơn)
   runZonedGuarded(() async {
-    // bootstrap() đã tự gọi WidgetsFlutterBinding.ensureInitialized()
+    // Bắt buộc phải gọi trước khi sử dụng các plugin Flutter, bao gồm Firebase
+    WidgetsFlutterBinding.ensureInitialized(); 
+    
+    // 1. KHỞI TẠO FIREBASE
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+
+    // 2. Khởi động hạ tầng DI/Module
     await bootstrap();
 
-    // Router nên tạo SAU bootstrap để chắc chắn DI đã sẵn sàng
+    // 3. Router nên tạo SAU bootstrap để chắc chắn DI đã sẵn sàng
     final router = AppRouter();
 
     runApp(MangaReaderApp(router: router));
