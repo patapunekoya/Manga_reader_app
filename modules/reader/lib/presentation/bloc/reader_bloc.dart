@@ -66,6 +66,9 @@ class ReaderBloc extends Bloc<ReaderEvent, ReaderState> {
 
     // Khi 1 trang load ảnh bị lỗi
     on<ReaderReportImageFailed>(_onReportImageFailed);
+
+    // THÊM HANDLER CHO SỰ KIỆN TẢI LẠI (RETRY)
+    on<ReaderRetryLoad>(_onRetryLoad);
   }
 
   // ===========================================================================
@@ -165,5 +168,29 @@ class ReaderBloc extends Bloc<ReaderEvent, ReaderState> {
       pageIndex: event.pageIndex,
       imageUrl: event.imageUrl,
     );
+  }
+  
+  // ===========================================================================
+  // 4) RETRY LOAD CHAPTER (MỚI)
+  // ===========================================================================
+  /// Handler cho sự kiện Retry Load. 
+  /// Dùng metadata đã lưu trong state để gọi lại _onLoadChapter.
+  Future<void> _onRetryLoad(
+    ReaderRetryLoad event,
+    Emitter<ReaderState> emit,
+  ) async {
+    if (state.chapterId.isNotEmpty) {
+      // Dùng lại logic _onLoadChapter, truyền lại metadata đã lưu trong state
+      // (Giả sử logic load và metadata đã đủ để chạy lại)
+      final retryEvent = ReaderLoadChapter(
+        state.chapterId,
+        mangaId: state.mangaId,
+        mangaTitle: state.mangaTitle,
+        coverImageUrl: state.coverImageUrl,
+        chapterNumber: state.chapterNumber,
+        initialPageIndex: state.currentPage.value, // Giữ nguyên trang hiện tại
+      );
+      await _onLoadChapter(retryEvent, emit);
+    }
   }
 }

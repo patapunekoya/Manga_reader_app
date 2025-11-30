@@ -120,3 +120,11 @@ class ReaderReportImageFailed extends ReaderEvent {
   @override
   List<Object?> get props => [pageIndex, imageUrl];
 }
+
+// ===========================================================================
+// EVENT 4: RETRY CHAPTER LOAD
+// ===========================================================================
+// Khi user bấm nút Retry trên màn hình lỗi (ReaderView).
+class ReaderRetryLoad extends ReaderEvent {
+  const ReaderRetryLoad();
+}

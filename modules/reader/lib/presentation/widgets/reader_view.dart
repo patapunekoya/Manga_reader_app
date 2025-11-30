@@ -173,17 +173,47 @@ class _ReaderViewState extends State<ReaderView> {
           );
         }
 
-        // Trạng thái failure: hiển thị lỗi thân thiện
+// =======================================================================
+        // CẬP NHẬT: Trạng thái failure - Lọc Lỗi Hiển Thị
+        // =======================================================================
         if (state.status == ReaderStatus.failure) {
           return Container(
             color: Colors.black,
             child: Center(
-              child: Text(
-                "Không tải được chapter.\n${state.errorMessage ?? ""}",
-                style: const TextStyle(
-                  color: Colors.white70,
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // HIỂN THỊ THÔNG BÁO ĐƠN GIẢN VÀ THÂN THIỆN
+                    Text(
+                      "Mạng không ổn định hoặc không tải được truyện.",
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 16,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      "Vui lòng kiểm tra kết nối và thử lại.",
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 14,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      icon: const Icon(Icons.refresh),
+                      onPressed: () {
+                        // Bắn event RetryLoad vào Bloc
+                        context.read<ReaderBloc>().add(const ReaderRetryLoad());
+                      },
+                      label: const Text("Tải lại"),
+                    ),
+                  ],
                 ),
-                textAlign: TextAlign.center,
               ),
             ),
           );
