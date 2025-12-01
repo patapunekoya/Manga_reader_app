@@ -130,11 +130,11 @@ Future<void> bootstrap() async {
 
   // 6) Repository — ghép DataSource vào tầng domain
   // CẬP NHẬT: LibraryRepositoryImpl MỚI cần 3 dependencies
-  if (!sl.isRegistered<LibraryRepository>()) {
+if (!sl.isRegistered<LibraryRepository>()) {
+    // CẬP NHẬT: Xóa sl<LibraryLocalDataSource>()
     sl.registerLazySingleton<LibraryRepository>(() => LibraryRepositoryImpl(
-        sl<LibraryLocalDataSource>(),
-        sl<AuthRepository>(), // Cần AuthRepository từ Module Auth
-        sl<LibraryFirestoreDataSource>(), // Cần Firestore DS
+        sl<AuthRepository>(),             // Auth Repo (để lấy userID)
+        sl<LibraryFirestoreDataSource>(), // Remote DS (để gọi Firestore)
     ));
   }
   if (!sl.isRegistered<DiscoveryRepository>()) {
