@@ -1,5 +1,5 @@
 name: manga_reader_app
-description: Manga reader using MangaDex API (Flutter + MangaDex API + modular DDD)
+description: Manga reader using MangaDex API
 publish_to: "none"
 version: 0.0.1
 
@@ -10,36 +10,30 @@ dependencies:
   flutter:
     sdk: flutter
 
-  flutter_bloc: ^8.1.4
-  equatable: ^2.0.5
-  dio: ^5.5.0
-  cached_network_image: ^3.3.1
-  hive: ^2.2.3
-  hive_flutter: ^1.1.0
-  get_it: ^7.7.0
-  go_router: ^14.2.0
-  meta: ^1.15.0
-  firebase_core: ^2.27.0
-  firebase_auth: ^4.6.3
+  # Core Modules
+  shared_dependencies:
+    path: modules/shared_dependencies
+  core:
+    path: modules/core
 
-  # modules nội bộ
+  # Feature Modules
+  auth:
+    path: modules/auth
+  home:
+    path: modules/home
   discovery:
     path: modules/discovery
   catalog:
     path: modules/catalog
-  reader:
-    path: modules/reader
   library_manga:
     path: modules/library
-  home:
-    path: modules/home
-  auth:
-    path: modules/auth
-
+  reader:
+    path: modules/reader
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_lints: ^4.0.0
 
 flutter:
   uses-material-design: true

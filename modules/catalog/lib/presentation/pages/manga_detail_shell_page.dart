@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 
+
 import 'package:catalog/presentation/bloc/manga_detail_bloc.dart';
 import 'package:catalog/presentation/widgets/manga_detail_view.dart';
 

@@ -1,34 +1,16 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import '../theme/colors.dart';
 
-// Các trang thật
-import 'home_shell_page.dart';
-import 'search_shell_page.dart';
-import 'library_shell_page.dart';
-import 'profile_shell_page.dart';
+// 1. Import Core để lấy AppColors
+import 'package:core/core.dart'; 
 
-/// ======================================================================
-/// File: page/main_shell.dart
-/// Mục đích:
-///   - Đóng vai trò “App shell” tầng UI cho 3 tab chính: Home / Search / Library.
-///   - Quản lý chuyển tab bằng PageView + BottomNavigationBar.
-///   - Tối ưu hiệu năng: chỉ render trang đang active (lazy), giữ state bằng keepAlive.
-///
-/// Kiến trúc & Dòng chảy:
-///   - Người dùng vuốt trái/phải hoặc bấm icon bottom nav.
-///   - MainShell điều khiển PageController -> PageView animate/jump đến trang.
-///   - Mỗi trang con được bọc bởi _LazyPage:
-///       • active == true  → dựng widget thật (HomeShellPage / SearchShellPage / LibraryShellPage)
-///       • active == false → trả về SizedBox.expand() (placeholder rỗng, không tốn tài nguyên)
-///
-/// Quy ước:
-///   - Không pre-cache trang lân cận (allowImplicitScrolling=false, cacheExtent mặc định).
-///   - Animation thời gian phụ thuộc khoảng cách tab để cảm giác “hợp lý”.
-///   - Bottom nav là nguồn sự thật cho selectedIndex hiển thị.
-/// ======================================================================
+// 2. Import các trang Shell từ Module
+import 'package:home/presentation/page/home_shell_page.dart';
+import 'package:catalog/presentation/pages/search_shell_page.dart';
+import 'package:library_manga/presentation/pages/library_shell_page.dart';
+import 'package:auth/presentation/pages/profile_shell_page.dart';
+
 class MainShell extends StatefulWidget {
-  /// Tab muốn hiển thị khi vào shell (0=Home, 1=Search, 2=Library).
   final int currentIndex;
   const MainShell({super.key, required this.currentIndex});
 
@@ -37,9 +19,7 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
-  // PageController điều khiển PageView
   late final PageController _controller;
-  // Chỉ số tab đang hiển thị (đồng bộ với PageView.onPageChanged)
   late int _activeIndex;
 
   @override
@@ -47,25 +27,20 @@ class _MainShellState extends State<MainShell> {
     super.initState();
     _activeIndex = widget.currentIndex;
     _controller = PageController(initialPage: widget.currentIndex, keepPage: true);
+    print("🚀 MainShell INIT - ActiveIndex: $_activeIndex"); // Log để kiểm tra xem màn hình có được build không
   }
 
   @override
   void didUpdateWidget(covariant MainShell oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Khi parent yêu cầu chuyển tab (ví dụ: điều hướng /home, /search, /library)
-    // và khác tab hiện tại, thực hiện animate.
     if (oldWidget.currentIndex != widget.currentIndex && _activeIndex != widget.currentIndex) {
       _jumpTo(widget.currentIndex);
     }
   }
 
-  /// Chuyển đến tab [index] với animation tùy theo khoảng cách.
-  /// - distance = |index - _activeIndex|
-  /// - ms = max(180, 140 * distance): nhảy xa thì nhanh hơn nhưng vẫn “lướt”.
   Future<void> _jumpTo(int index) async {
     if (index == _activeIndex) return;
     final distance = (index - _activeIndex).abs();
-    // Nhanh hơn khi nhảy xa, nhưng vẫn có cảm giác "lướt"
     final ms = math.max(180, 140 * distance);
     await _controller.animateToPage(
       index,
@@ -80,9 +55,6 @@ class _MainShellState extends State<MainShell> {
     super.dispose();
   }
 
-  // Bọc mỗi trang bằng LazyPage:
-  // - active == true: render trang thật
-  // - active == false: trả về SizedBox.expand() (placeholder rỗng, rẻ)
   Widget _buildLazy({required int index, required Widget child}) {
     return _LazyPage(
       key: PageStorageKey('tab-$index'),
@@ -94,36 +66,31 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Màu nền thống nhất toàn app
       backgroundColor: AppColors.background,
+      
+      // Giữ footer cố định, không bị đẩy lên khi bàn phím hiện
+      resizeToAvoidBottomInset: false, 
+      
       body: PageView.builder(
         controller: _controller,
-        itemCount: 4,
-        physics: const BouncingScrollPhysics(), // vẫn cho vuốt mượt
-        allowImplicitScrolling: false,          // đừng render trang cạnh
-        padEnds: false,
-        // cacheExtent 0 để không pre-cache trang lân cận
+        itemCount: 4, 
+        physics: const BouncingScrollPhysics(),
+        allowImplicitScrolling: false, // Tắt pre-cache để tiết kiệm RAM
         onPageChanged: (i) {
-          // Cập nhật chỉ số active khi user vuốt
           setState(() => _activeIndex = i);
         },
         itemBuilder: (context, index) {
           switch (index) {
-            case 0:
-              return _buildLazy(index: 0, child: const HomeShellPage());
-            case 1:
-              return _buildLazy(index: 1, child: const SearchShellPage());
-            case 2:
-              return _buildLazy(index: 2, child: const LibraryShellPage());
-            case 3:
-              // THÊM: Case 3 cho Profile
-              return _buildLazy(index: 3, child: const ProfileShellPage());
-            default:
-              return const SizedBox.shrink(); 
+            case 0: return _buildLazy(index: 0, child: const HomeShellPage());
+            case 1: return _buildLazy(index: 1, child: const SearchShellPage());
+            case 2: return _buildLazy(index: 2, child: const LibraryShellPage());
+            case 3: return _buildLazy(index: 3, child: const ProfileShellPage());
+            default: return const SizedBox.shrink(); 
           }
         },
       ),
-      // Thanh điều hướng đáy: là nguồn event chuyển tab khi người dùng bấm icon
+      
+      // === PHẦN FOOTER ĐÃ SỬA ===
       bottomNavigationBar: _BottomNav(
         currentIndex: _activeIndex,
         onTap: (i) => _jumpTo(i),
@@ -132,68 +99,78 @@ class _MainShellState extends State<MainShell> {
   }
 }
 
-/// Trang "lười": chỉ dựng child khi active. Còn lại là placeholder rỗng.
-/// Vẫn giữ state nội bộ nhờ AutomaticKeepAliveClientMixin.
 class _LazyPage extends StatefulWidget {
   final bool active;
   final Widget child;
-
   const _LazyPage({super.key, required this.active, required this.child});
-
   @override
   State<_LazyPage> createState() => _LazyPageState();
 }
 
 class _LazyPageState extends State<_LazyPage> with AutomaticKeepAliveClientMixin {
-  // Luôn giữ state của trang kể cả khi off-screen
   @override
   bool get wantKeepAlive => true;
-
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    // Khi không active: không dựng UI nặng, chỉ trả placeholder chiếm chỗ.
     return widget.active ? widget.child : const SizedBox.expand();
   }
 }
 
+// === WIDGET FOOTER MỚI (Sử dụng BottomNavigationBar thay vì NavigationBar) ===
 class _BottomNav extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
-
   const _BottomNav({required this.currentIndex, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return NavigationBar(
-      height: 62,
-      backgroundColor: const Color(0xFF111114),
-      indicatorColor: const Color(0xFF262633),
-      selectedIndex: currentIndex,
-      onDestinationSelected: onTap,
-      destinations: const [
-        NavigationDestination(
-          icon: Icon(Icons.explore_outlined),
-          selectedIcon: Icon(Icons.explore),
-          label: 'Khám phá',
-        ),
-        NavigationDestination(
-          icon: Icon(Icons.search_outlined),
-          selectedIcon: Icon(Icons.search),
-          label: 'Tìm kiếm',
-        ),
-        NavigationDestination(
-          icon: Icon(Icons.collections_bookmark_outlined),
-          selectedIcon: Icon(Icons.collections_bookmark),
-          label: 'Thư viện',
-        ),
-      NavigationDestination(
-          icon: Icon(Icons.person_outline), // Icon Tài khoản
-          selectedIcon: Icon(Icons.person),
-          label: 'Tài khoản',
-        ),
+    // Wrap trong Theme để đảm bảo màu nền Canvas chuẩn cho BottomNav
+    return Theme(
+      data: Theme.of(context).copyWith(
+        canvasColor: const Color(0xFF111114), // Màu nền của Footer
+      ),
+      child: BottomNavigationBar(
+        // QUAN TRỌNG: Type.fixed để hiển thị đủ 4 item mà không bị hiệu ứng shifting
+        type: BottomNavigationBarType.fixed,
+        
+        backgroundColor: const Color(0xFF111114),
+        elevation: 8, // Đổ bóng nhẹ để tách biệt với body
+        
+        currentIndex: currentIndex,
+        onTap: onTap,
+        
+        // Cấu hình màu sắc rõ ràng
+        selectedItemColor: const Color(0xFF7C4DFF), // Màu tím (Accent) khi chọn
+        unselectedItemColor: Colors.grey,           // Màu xám khi không chọn
+        showUnselectedLabels: true,
+        
+        selectedFontSize: 12,
+        unselectedFontSize: 12,
 
-      ],
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.explore_outlined),
+            activeIcon: Icon(Icons.explore),
+            label: 'Khám phá',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.search_outlined),
+            activeIcon: Icon(Icons.search),
+            label: 'Tìm kiếm',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.collections_bookmark_outlined),
+            activeIcon: Icon(Icons.collections_bookmark),
+            label: 'Thư viện',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_outline),
+            activeIcon: Icon(Icons.person),
+            label: 'Tài khoản',
+          ),
+        ],
+      ),
     );
   }
 }

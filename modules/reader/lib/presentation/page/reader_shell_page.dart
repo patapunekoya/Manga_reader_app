@@ -5,7 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 
-import '../theme/colors.dart';
+import 'package:core/core.dart';
 
 // bloc đọc truyện
 import 'package:reader/presentation/bloc/reader_bloc.dart';
@@ -20,6 +20,7 @@ import 'package:catalog/application/usecases/get_manga_detail.dart'; // NEW
 import 'package:catalog/domain/value_objects/manga_id.dart';
 import 'package:catalog/domain/entities/chapter.dart';
 import 'package:library_manga/application/usecases/get_continue_reading.dart'; // NEW: Để lấy lại data từ history cũ
+
 
 /// ======================================================================
 /// File: page/reader_shell_page.dart

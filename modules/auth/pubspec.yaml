@@ -1,5 +1,5 @@
 name: auth
-description: Authentication module using Firebase
+description: Authentication module
 version: 0.0.1
 publish_to: 'none'
 
@@ -9,15 +9,12 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  
-  flutter_bloc: ^8.1.4
-  equatable: ^2.0.5
-  get_it: ^7.7.0
-  
-  # Firebase
-  firebase_auth: ^4.17.0
-  firebase_core: ^2.27.0
-  cloud_firestore: ^4.15.0
+  # Chỉ depend vào shared và core, không liệt kê lẻ tẻ
+  shared_dependencies:
+    path: ../shared_dependencies
+  core:
+    path: ../core
+
 
 dev_dependencies:
   flutter_test:

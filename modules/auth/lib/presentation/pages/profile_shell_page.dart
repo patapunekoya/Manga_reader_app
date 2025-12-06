@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
-import 'package:go_router/go_router.dart';
-
+import 'package:shared_dependencies/shared_dependencies.dart';
 import 'package:auth/auth.dart'; // Import Auth Module
-import '../theme/colors.dart'; 
+import 'package:core/core.dart'; // <--- SỬA: Lấy AppColors từ Core
 
 /// ProfileShellPage
 /// Màn hình Tài khoản: chứa nút Đăng nhập/Đăng xuất
@@ -66,7 +64,7 @@ class ProfileShellPage extends StatelessWidget {
                   icon: const Icon(Icons.login),
                   label: const Text('Đăng nhập / Đăng ký'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.purple,
+                    backgroundColor: const Color.fromARGB(255, 241, 241, 241),
                     padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
                   ),
                 ),

@@ -1,15 +1,10 @@
-// lib/app.dart
-
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:get_it/get_it.dart';
-import 'package:auth/auth.dart'; // Import Auth Module
-
+import 'package:shared_dependencies/shared_dependencies.dart'; 
+import 'package:auth/auth.dart'; 
 import 'routes/app_router.dart';
-import 'theme/app_theme.dart';
-// Note: Cần đảm bảo file theme/colors.dart có thể được gọi nếu dùng theme/app_theme.dart
 
+// SỬA IMPORT: Dùng theme từ module core
+import 'package:core/core.dart';
 class MangaReaderApp extends StatelessWidget {
   final AppRouter router;
 

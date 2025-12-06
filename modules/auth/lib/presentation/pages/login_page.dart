@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
+import 'package:go_router/go_router.dart'; // THÊM: Import GoRouter để điều hướng
+
+// THÊM: Import Core để lấy AppColors cho đồng bộ
+import 'package:core/core.dart';
+
+import 'package:shared_dependencies/shared_dependencies.dart';
 
 // Import BLoC và UseCase từ module auth
-import '../../application/sign_in_with_email.dart';
-import '../../application/sign_up_with_email.dart';
-import '../bloc/login_form/login_form_bloc.dart'; // Đã thêm LoginFormBloc
-
-// NOTE: Cần đảm bảo file register_page.dart đã được sửa để import widget này
-import 'register_page.dart'; // Import file chứa AuthFormContent
-
+import '../bloc/login_form/login_form_bloc.dart';
 // ======================================================================
 // LoginPage: Entry point, cung cấp Bloc
 // ======================================================================
@@ -81,6 +81,16 @@ class _AuthFormContentState extends State<AuthFormContent> {
     _emailController.clear();
     _passController.clear();
   }
+  // HÀM XỬ LÝ NÚT BACK
+  void _handleBack() {
+    // Nếu có thể pop (ví dụ từ Library -> Login), thì pop về trang trước
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      // Nếu không (ví dụ mở app vào thẳng Login), thì về Home
+      context.go('/home');
+    }
+  }
 
 
   @override
@@ -102,6 +112,18 @@ class _AuthFormContentState extends State<AuthFormContent> {
         
         return Scaffold(
           backgroundColor: Colors.black, // Theme tối
+          // --- THÊM PHẦN APP BAR (HEADER) ---
+          appBar: AppBar(
+            backgroundColor: AppColors.background, // Màu nền giống background app
+            elevation: 0, // Không đổ bóng
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              onPressed: _handleBack, // Gọi hàm quay lại
+              tooltip: 'Về trang chủ',
+            ),
+          ),
+
+
           body: Padding(
             padding: const EdgeInsets.all(24.0),
             child: Column(

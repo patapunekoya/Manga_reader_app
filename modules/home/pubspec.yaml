@@ -1,23 +1,24 @@
 name: home
-description: "Home module: continue reading + trending feed"
+description: "Home module"
 version: 0.0.1
 publish_to: "none"
 
 environment:
-  sdk: ">=3.4.0 <4.0.0"
+  sdk: ">=3.0.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
-
-  equatable: ^2.0.5
-  meta: ^1.15.0
-  flutter_bloc: ^8.1.4
-  get_it: ^7.7.0
-
-  # chú ý: tên key ở đây PHẢI đúng bằng `name:` của module kia
+  
+  shared_dependencies:
+    path: ../shared_dependencies
+  
+  # Phụ thuộc vào các module cung cấp dữ liệu
+  discovery:
+    path: ../discovery
   library_manga:
     path: ../library
 
-  discovery:
-    path: ../discovery
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

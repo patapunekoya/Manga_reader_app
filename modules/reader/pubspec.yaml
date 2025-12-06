@@ -1,24 +1,24 @@
 name: reader
-description: "Reader module: chapter page list, lazy-load images, reading progress UI"
+description: "Reader module"
 version: 0.0.1
 publish_to: "none"
 
 environment:
-  sdk: ">=3.4.0 <4.0.0"
+  sdk: ">=3.0.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
-
-  dio: ^5.5.0
-  get_it: ^7.7.0
-  flutter_bloc: ^8.1.4
-  equatable: ^2.0.5
-  cached_network_image: ^3.3.1
-  meta: ^1.15.0
-
-
-
-  # ...
+  
+  # Module dùng chung
+  shared_dependencies:
+    path: ../shared_dependencies
+  
+  # Module liên quan (để lưu progress)
   library_manga:
     path: ../library
+  catalog:
+    path: ../catalog
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

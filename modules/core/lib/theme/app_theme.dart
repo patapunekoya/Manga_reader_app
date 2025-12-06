@@ -1,6 +1,6 @@
-// lib/theme/app_theme.dart
 import 'package:flutter/material.dart';
-import 'colors.dart';
+// SỬA DÒNG NÀY: thay 'colors.dart' bằng 'app_colors.dart'
+import 'app_colors.dart';
 
 ThemeData buildDarkTheme() {
   final base = ThemeData.dark(useMaterial3: true);

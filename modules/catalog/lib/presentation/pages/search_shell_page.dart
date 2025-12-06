@@ -4,7 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 
-import '../theme/colors.dart';
+import 'package:core/core.dart';
 
 import 'package:catalog/presentation/bloc/search_bloc.dart';
 import 'package:catalog/presentation/widgets/search_view.dart';

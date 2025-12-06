@@ -5,7 +5,6 @@ import 'package:library_manga/domain/repositories/library_repository.dart';
 import 'package:library_manga/domain/value_objects/favorite_id.dart';
 import 'package:library_manga/domain/value_objects/progress_id.dart';
 
-// CHỈ CÒN 2 DEPENDENCIES: Auth & FirestoreDS
 import 'package:auth/domain/repositories/auth_repository.dart';
 import '../datasources/library_firestore_ds.dart';
 
@@ -13,13 +12,11 @@ class LibraryRepositoryImpl implements LibraryRepository {
   final AuthRepository _authRepo;
   final LibraryFirestoreDataSource _remote;
 
-  // Không còn LibraryLocalDataSource nữa
+  // FIX: Xóa tham số LibraryLocalDataSource thừa
   LibraryRepositoryImpl(this._authRepo, this._remote);
 
   String? get _userId => _authRepo.currentUser.id;
-  bool get _isAuth => _authRepo.currentUser.isNotEmpty; // Kiểm tra UserEntity không rỗng
-
-  // --- FAVORITES ---
+  bool get _isAuth => _authRepo.currentUser.isNotEmpty;
 
   @override
   Future<void> toggleFavorite({
@@ -27,18 +24,15 @@ class LibraryRepositoryImpl implements LibraryRepository {
     required String title,
     required String? coverImageUrl,
   }) async {
-    if (!_isAuth) return; // Chưa đăng nhập thì bỏ qua hoặc throw lỗi tùy bạn
+    if (!_isAuth) return;
 
     try {
       final uid = _userId!;
-      // 1. Kiểm tra trên Cloud xem có chưa
       final exists = await _remote.checkFavoriteExists(uid, mangaId);
 
       if (exists) {
-        // 2a. Có rồi -> Xóa
         await _remote.removeFavorite(uid, mangaId);
       } else {
-        // 2b. Chưa có -> Thêm mới
         final now = DateTime.now().millisecondsSinceEpoch;
         await _remote.addFavorite(uid, {
           "mangaId": mangaId,
@@ -50,19 +44,23 @@ class LibraryRepositoryImpl implements LibraryRepository {
       }
     } catch (e) {
       debugPrint("Toggle Favorite Error: $e");
-      rethrow;
+      // Không rethrow để tránh crash UI, chỉ log
     }
   }
 
   @override
   Future<void> removeFavorite(String mangaId) async {
     if (!_isAuth) return;
-    await _remote.removeFavorite(_userId!, mangaId);
+    try {
+       await _remote.removeFavorite(_userId!, mangaId);
+    } catch (e) {
+       debugPrint("Remove Favorite Error: $e");
+    }
   }
 
   @override
   Future<List<FavoriteItem>> getFavorites() async {
-    if (!_isAuth) return []; // Trả về list rỗng nếu chưa login
+    if (!_isAuth) return [];
 
     try {
       final rawList = await _remote.getFavorites(_userId!);
@@ -80,8 +78,6 @@ class LibraryRepositoryImpl implements LibraryRepository {
       return [];
     }
   }
-
-  // --- READING PROGRESS ---
 
   @override
   Future<void> saveReadProgress({
@@ -149,6 +145,7 @@ class LibraryRepositoryImpl implements LibraryRepository {
         savedAt: DateTime.fromMillisecondsSinceEpoch(raw['savedAt'] ?? 0),
       );
     } catch (e) {
+      debugPrint("Get Progress Error: $e");
       return null;
     }
   }
@@ -156,6 +153,10 @@ class LibraryRepositoryImpl implements LibraryRepository {
   @override
   Future<void> clearAllProgress() async {
     if (!_isAuth) return;
-    await _remote.clearAllHistory(_userId!);
+    try {
+        await _remote.clearAllHistory(_userId!);
+    } catch (e) {
+        debugPrint("Clear History Error: $e");
+    }
   }
 }

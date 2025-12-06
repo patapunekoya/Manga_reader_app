@@ -1,0 +1,19 @@
+name: core
+description: "Core utilities and configurations"
+version: 1.0.0
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # Chỉ depend vào shared_dependencies để lấy Dio
+  shared_dependencies:
+    path: ../shared_dependencies
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

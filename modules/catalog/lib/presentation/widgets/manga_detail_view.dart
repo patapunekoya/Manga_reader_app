@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
+import 'package:go_router/go_router.dart'; // Import GoRouter để chuyển trang
+
+// THÊM: Import Auth Module để check trạng thái đăng nhập
+import 'package:auth/auth.dart'; 
 
 // BLoC + domain
 import '../bloc/manga_detail_bloc.dart';
@@ -13,29 +17,6 @@ import 'package:library_manga/application/usecases/get_continue_reading.dart';
 
 /// =========================================================================
 /// WIDGET: MangaDetailView (Stateful)
-///
-/// Mục đích
-/// - Hiển thị toàn bộ trang chi tiết manga: header (cover, info, actions),
-///   mô tả (có nút xem thêm/thu gọn), danh sách chương (có sort + filter ngôn ngữ),
-///   và tích hợp “Đọc tiếp” dựa trên tiến độ đã lưu từ module library.
-///
-/// Cách hoạt động tổng quát
-/// - Khi initState:
-///   • Dispatch `MangaDetailLoadRequested(mangaId)` để tải detail + chapters.
-///   • Gắn listener cho ScrollController để bắn `MangaDetailLoadMoreChapters` khi gần cuối.
-///   • Gọi `_reloadProgress()` để lấy chương gần nhất đã đọc (star).
-/// - Khi bấm chương: gọi `onOpenChapter` do shell/router truyền vào.
-/// - Khi bấm “Đọc từ đầu”: chọn chương đầu theo sort hiện tại.
-/// - Khi bấm “Đọc tiếp”: mở chương lưu gần nhất, fallback sang “Đọc từ đầu”.
-///
-/// Input
-/// - mangaId: id manga.
-/// - onOpenChapter(chapterId, pageIndex=0): callback mở reader.
-/// - onToggleFavorite: callback toggle favorite (đã dùng bloc event thay thế bên dưới).
-///
-/// Lưu ý
-/// - Không tự tạo BLoC ở đây; view nhận BLoC qua context (BlocProvider ở shell).
-/// - Dùng GetIt chỉ cho usecase “Đọc tiếp”; còn BLoC do shell inject.
 /// =========================================================================
 class MangaDetailView extends StatefulWidget {
   final String mangaId;
@@ -169,6 +150,51 @@ class _MangaDetailViewState extends State<MangaDetailView>
     }
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Không có chương để đọc.')),
+    );
+  }
+
+  // --- LOGIC MỚI: Xử lý nút yêu thích ---
+  void _handleFavoritePress() {
+    // 1. Lấy trạng thái Auth từ Bloc toàn cục (GetIt hoặc context)
+    // Vì AuthStatusBloc đã được cung cấp ở Root (App), ta có thể dùng context.read
+    final authState = context.read<AuthStatusBloc>().state;
+    
+    // 2. Nếu chưa đăng nhập -> Hiện Dialog
+    if (authState.status != AuthStatus.authenticated) {
+      _showLoginDialog();
+      return;
+    }
+
+    // 3. Nếu đã đăng nhập -> Thực hiện toggle bình thường
+    context.read<MangaDetailBloc>().add(const MangaDetailFavoriteToggled());
+  }
+
+  // --- Dialog yêu cầu đăng nhập ---
+  void _showLoginDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1D), // Nền tối
+        title: const Text("Yêu cầu đăng nhập", style: TextStyle(color: Colors.white)),
+        content: const Text(
+          "Bạn cần đăng nhập để thêm truyện vào danh sách yêu thích.",
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Hủy", style: TextStyle(color: Colors.white60)),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF7C4DFF)),
+            onPressed: () {
+              Navigator.pop(ctx); // Đóng dialog
+              context.push('/login'); // Chuyển sang màn login
+            },
+            child: const Text("Đăng nhập"),
+          ),
+        ],
+      ),
     );
   }
 
@@ -326,11 +352,9 @@ class _MangaDetailViewState extends State<MangaDetailView>
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: IconButton(
-                    onPressed: () {
-                      context
-                          .read<MangaDetailBloc>()
-                          .add(const MangaDetailFavoriteToggled());
-                    },
+                    // THAY ĐỔI Ở ĐÂY: Gọi hàm check auth thay vì gọi trực tiếp
+                    onPressed: _handleFavoritePress,
+                    
                     icon: Icon(
                       manga.isFavorite
                           ? Icons.favorite

@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:get_it/get_it.dart';
-import 'package:go_router/go_router.dart';
-
-import '../theme/colors.dart';
+import 'package:shared_dependencies/shared_dependencies.dart'; // Bloc, GetIt, GoRouter
+import 'package:core/core.dart'; // <--- SỬA: Lấy AppColors
 
 // THÊM: Import Auth Module
 import 'package:auth/auth.dart';
@@ -168,7 +165,7 @@ class _LibraryShellPageState extends State<LibraryShellPage> {
               icon: const Icon(Icons.login),
               label: const Text("Đăng nhập"),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF7C4DFF), // Màu accent
+                backgroundColor: const Color.fromARGB(255, 243, 243, 243), // Màu accent
                 padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
               ),
             ),

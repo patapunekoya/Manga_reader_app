@@ -3,7 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 
-import '../theme/colors.dart';
+import 'package:core/core.dart';
 
 import 'package:home/presentation/bloc/home_bloc.dart';
 import 'package:home/presentation/bloc/home_event.dart';

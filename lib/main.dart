@@ -15,10 +15,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 
-// THÊM: Firebase Core và Options
-import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart'; // File này được tạo tự động bởi flutterfire configure
+// Thay đổi import: Dùng shared_dependencies
+import 'package:shared_dependencies/shared_dependencies.dart'; // Chứa FirebaseCore
 
+import 'firebase_options.dart';
 import 'bootstrap.dart';
 import 'routes/app_router.dart';
 import 'app.dart';
